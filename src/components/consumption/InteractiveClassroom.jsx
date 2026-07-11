@@ -1,30 +1,20 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
 import QuizEngine from './QuizEngine';
-import { Feedback } from '@questlabs/react-sdk';
-import { sdkTheme } from '../../theme/sdkTheme';
+import VideoPlayer from './VideoPlayer';
+import LiveStreamRoom from './LiveStreamRoom';
+import OnyxAssistant from './OnyxAssistant';
+import ResourceVault from './ResourceVault';
 import { useAcademyStore } from '../../store/useAcademyStore';
-
-const DEMO_QUIZ = [
-  {
-    question_id: "q-1",
-    question_text: "What is the primary function of the memory_banks schema in AXiM Core?",
-    options: {
-      "A": "To process Stripe payments.",
-      "B": "To persist vectorized documentation for RAG implementation.",
-      "C": "To cache Cloudflare responses.",
-      "D": "To store Web3 wallet private keys."
-    },
-    correct_answer: "B",
-    remediation_hint: "Review the Vector Database architecture module."
-  }
-];
+import BadgeNotification from '../gamification/BadgeNotification';
 
 export default function InteractiveClassroom({ course, enrollment, onProgress }) {
   const [activeLessonId, setActiveLessonId] = useState(course.modules[0]?.lessons[0]?.id);
   const [showFeedback, setShowFeedback] = useState(false);
-  const { user } = useAcademyStore();
-
+  const [newBadge, setNewBadge] = useState(null);
+  const [activeTab, setActiveTab] = useState('lesson'); // 'lesson' | 'resources' | 'ai'
+  
   const getLessonStatus = (lessonId) => {
     return enrollment.progress.some(p => p.lesson_id === lessonId && p.is_completed) ? 'completed' : 'pending';
   };
@@ -32,30 +22,38 @@ export default function InteractiveClassroom({ course, enrollment, onProgress })
   const activeLesson = course.modules.flatMap(m => m.lessons).find(l => l.id === activeLessonId);
   const isLastLesson = course.modules.flatMap(m => m.lessons).at(-1)?.id === activeLessonId;
 
-  const handleComplete = () => {
-    onProgress(activeLessonId);
+  const handleComplete = (score) => {
+    onProgress(activeLessonId, score);
     if (isLastLesson) {
       setShowFeedback(true);
+      if (course.badge) setNewBadge(course.badge);
     }
   };
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] bg-gray-950">
-      {/* Sidebar */}
-      <div className="w-80 border-r border-gray-800 bg-gray-950/50 flex flex-col hidden md:flex">
+    <div className="flex h-[calc(100vh-4rem)] bg-gray-950 overflow-hidden">
+      <BadgeNotification badge={newBadge} onClose={() => setNewBadge(null)} />
+      
+      {/* Course Sidebar */}
+      <div className="w-80 border-r border-gray-800 bg-gray-950/80 flex flex-col hidden lg:flex">
         <div className="p-6 border-b border-gray-800">
-          <h2 className="text-lg font-bold text-white line-clamp-1">{course.title}</h2>
-          <div className="mt-4 bg-gray-900 rounded-full h-1.5 overflow-hidden border border-gray-800">
+          <div className="flex items-center space-x-2 text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-2">
+            <SafeIcon name="Box" className="h-3 w-3" />
+            <span>Operational Mode</span>
+          </div>
+          <h2 className="text-lg font-bold text-white line-clamp-2 leading-tight">{course.title}</h2>
+          <div className="mt-4 bg-gray-900 rounded-full h-1 border border-gray-800 overflow-hidden">
             <div 
-              className="bg-emerald-500 h-full transition-all duration-500" 
+              className="bg-emerald-500 h-full transition-all duration-700" 
               style={{ width: `${(enrollment.progress.length / course.modules.flatMap(m => m.lessons).length) * 100}%` }} 
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
           {course.modules.map((mod, i) => (
             <div key={mod.id}>
-              <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em] mb-3 px-2">Module {i + 1}</h3>
+              <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3 px-2">Unit {i + 1}</h3>
               <div className="space-y-1">
                 {mod.lessons.map(lesson => {
                   const isCompleted = getLessonStatus(lesson.id) === 'completed';
@@ -64,13 +62,15 @@ export default function InteractiveClassroom({ course, enrollment, onProgress })
                     <button 
                       key={lesson.id} 
                       onClick={() => setActiveLessonId(lesson.id)}
-                      className={`w-full text-left px-4 py-3 rounded-xl flex items-center space-x-3 transition-colors ${isActive ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-900'}`}
+                      className={`w-full text-left px-4 py-3 rounded-xl flex items-center justify-between transition-all ${isActive ? 'bg-emerald-500/10 border border-emerald-500/20 text-white' : 'text-gray-500 hover:bg-gray-900'}`}
                     >
-                      <SafeIcon 
-                        name={isCompleted ? 'CheckCircle' : (lesson.type === 'video' ? 'Play' : 'FileText')} 
-                        className={`h-4 w-4 ${isCompleted ? 'text-emerald-500' : 'text-gray-500'}`} 
-                      />
-                      <span className="text-xs font-bold uppercase tracking-tight">{lesson.title}</span>
+                      <div className="flex items-center space-x-3">
+                        <SafeIcon 
+                          name={isCompleted ? 'CheckCircle' : lesson.type === 'video' ? 'Play' : lesson.type === 'live' ? 'Radio' : 'FileText'} 
+                          className={`h-3.5 w-3.5 ${isCompleted ? 'text-emerald-500' : lesson.type === 'live' ? 'text-red-500' : 'text-gray-500'}`} 
+                        />
+                        <span className="text-xs font-bold uppercase tracking-tight">{lesson.title}</span>
+                      </div>
                     </button>
                   );
                 })}
@@ -81,84 +81,79 @@ export default function InteractiveClassroom({ course, enrollment, onProgress })
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto bg-[#0a0a0a]">
-        <div className="max-w-4xl mx-auto p-8 py-12">
-          {showFeedback ? (
-            <div className="space-y-8">
-              <div className="text-center">
-                <div className="h-20 w-20 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(16,185,129,0.3)]">
-                  <SafeIcon name="Award" className="h-10 w-10 text-white" />
-                </div>
-                <h1 className="text-3xl font-black text-white uppercase tracking-tight">Curriculum Completed</h1>
-                <p className="text-gray-400 mt-2">Your progress has been recorded on the secure ledger.</p>
-              </div>
-              
-              {/* SDK Feedback Integration */}
-              <div className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden p-6">
-                {/* Normally we'd use the Feedback component from the SDK here */}
-                <div className="text-center p-8">
-                  <h3 className="text-white font-bold mb-4">Rate this course</h3>
-                  <div className="flex justify-center space-x-4">
-                    {[1,2,3,4,5].map(star => (
-                      <button key={star} className="text-gray-600 hover:text-emerald-400 transition-colors">
-                        <SafeIcon name="Star" className="h-8 w-8" />
+      <div className="flex-1 flex flex-col min-w-0 bg-[#070707]">
+        {/* Interaction Tabs */}
+        <div className="h-14 border-b border-gray-800 bg-gray-950/50 flex items-center px-4 space-x-6">
+          {[
+            { id: 'lesson', label: 'Curriculum', icon: 'BookOpen' },
+            { id: 'resources', label: 'Vault', icon: 'Layers' },
+            { id: 'ai', label: 'Onyx AI', icon: 'Cpu' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center space-x-2 h-full px-2 border-b-2 transition-all ${activeTab === tab.id ? 'border-emerald-500 text-white' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
+            >
+              <SafeIcon name={tab.icon} className="h-4 w-4" />
+              <span className="text-[10px] font-black uppercase tracking-widest">{tab.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 md:p-8">
+          <AnimatePresence mode="wait">
+            {activeTab === 'lesson' && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full">
+                {showFeedback ? (
+                  <div className="max-w-2xl mx-auto py-12 text-center animate-in zoom-in duration-500">
+                    <div className="h-24 w-24 bg-emerald-500 rounded-full flex items-center justify-center mx-auto mb-8 shadow-2xl shadow-emerald-500/20">
+                      <SafeIcon name="Award" className="h-12 w-12 text-white" />
+                    </div>
+                    <h1 className="text-4xl font-black text-white uppercase tracking-tighter mb-4">Certification Complete</h1>
+                    <p className="text-gray-400 mb-12">Your performance has been logged on the AXiM Ledger. Access your credentials in the Command Center.</p>
+                    <div className="flex space-x-4 justify-center">
+                      <button onClick={() => window.location.hash = '#/dashboard'} className="bg-gray-800 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs border border-gray-700 hover:bg-gray-700 transition-all">
+                        Command Center
                       </button>
-                    ))}
+                      <button onClick={() => window.location.hash = `#/certificate/${enrollment.id}`} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-900/20 hover:bg-emerald-500 transition-all">
+                         View Certificate
+                      </button>
+                    </div>
                   </div>
-                  <textarea 
-                    placeholder="Tell us what you think..."
-                    className="w-full mt-6 bg-gray-950 border border-gray-800 rounded-xl p-4 text-white focus:ring-2 focus:ring-emerald-500 outline-none"
-                    rows={4}
-                  />
-                  <button className="w-full mt-4 bg-emerald-600 py-3 rounded-xl font-bold text-white">Submit Review</button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-8">
-              {activeLesson?.type === 'video' ? (
-                <div className="space-y-6">
-                  <div className="aspect-video bg-gray-900 rounded-3xl border border-gray-800 flex items-center justify-center relative overflow-hidden group">
-                    <div 
-                      className="absolute inset-0 bg-cover opacity-20" 
-                      style={{ backgroundImage: `url(${course.thumbnail})` }} 
-                    />
-                    <button className="z-10 bg-emerald-500 text-white h-16 w-16 rounded-full flex items-center justify-center shadow-2xl hover:scale-110 transition-transform">
-                      <SafeIcon name="Play" className="h-6 w-6 ml-1" />
-                    </button>
+                ) : (
+                  <div className="max-w-5xl mx-auto">
+                    {activeLesson?.type === 'video' ? (
+                      <VideoPlayer url={activeLesson.videoUrl} title={activeLesson.title} onComplete={handleComplete} />
+                    ) : activeLesson?.type === 'live' ? (
+                      <LiveStreamRoom lesson={activeLesson} onComplete={handleComplete} />
+                    ) : activeLesson?.type === 'article' ? (
+                      <div className="max-w-3xl mx-auto space-y-8 prose prose-invert">
+                        <h1 className="text-4xl font-black uppercase tracking-tight text-white">{activeLesson.title}</h1>
+                        <div className="text-gray-400 text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: activeLesson.content }} />
+                        <button onClick={handleComplete} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-emerald-500 transition-all shadow-xl shadow-emerald-900/20">
+                          Finalize Objective
+                        </button>
+                      </div>
+                    ) : (
+                      <QuizEngine quizData={activeLesson?.quizData || []} onComplete={handleComplete} />
+                    )}
                   </div>
-                  <div className="flex justify-between items-center">
-                    <h1 className="text-3xl font-black text-white uppercase tracking-tight">{activeLesson.title}</h1>
-                    <button 
-                      onClick={handleComplete}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-xl font-bold transition-all flex items-center space-x-2"
-                    >
-                      <span>Mark Complete</span>
-                      <SafeIcon name="ArrowRight" className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              ) : activeLesson?.type === 'article' ? (
-                <div className="space-y-8">
-                  <h1 className="text-4xl font-black text-white uppercase tracking-tight">{activeLesson.title}</h1>
-                  <div 
-                    className="prose prose-invert max-w-none text-gray-400 prose-headings:text-white prose-p:leading-relaxed text-lg"
-                    dangerouslySetInnerHTML={{ __html: activeLesson.content }} 
-                  />
-                  <div className="pt-8 border-t border-gray-800">
-                    <button 
-                      onClick={handleComplete}
-                      className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-xl font-black uppercase tracking-widest transition-all"
-                    >
-                      Complete Lesson
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <QuizEngine quizData={DEMO_QUIZ} onComplete={handleComplete} />
-              )}
-            </div>
-          )}
+                )}
+              </motion.div>
+            )}
+
+            {activeTab === 'resources' && (
+              <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="max-w-3xl mx-auto py-12">
+                <ResourceVault resources={course.resources} />
+              </motion.div>
+            )}
+
+            {activeTab === 'ai' && (
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full flex flex-col">
+                <OnyxAssistant courseTitle={course.title} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </div>

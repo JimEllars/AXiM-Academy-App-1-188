@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThirdwebProvider } from '@thirdweb-dev/react';
 import Home from './pages/Home';
 import StudentDashboard from './pages/StudentDashboard';
+import TeacherDashboard from './pages/TeacherDashboard';
 import Learn from './pages/Learn';
 import CertificatePage from './pages/CertificatePage';
 import VerificationPage from './pages/VerificationPage';
@@ -29,6 +30,7 @@ export default function App() {
                   <Route path="/" element={<Home />} />
                   <Route path="/course/:id" element={<CourseDetails />} />
                   <Route path="/dashboard" element={<StudentDashboard />} />
+                  <Route path="/teacher" element={<TeacherDashboard />} />
                   <Route path="/learn/:courseId" element={<Learn />} />
                 </Routes>
               </>

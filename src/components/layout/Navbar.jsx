@@ -5,7 +5,7 @@ import { useAddress, ConnectWallet } from '@thirdweb-dev/react';
 import SafeIcon from '../../common/SafeIcon';
 
 export default function Navbar() {
-  const { user, searchQuery, setSearchQuery } = useAcademyStore();
+  const { user, searchQuery, setSearchQuery, role, setRole } = useAcademyStore();
   const address = useAddress();
   const location = useLocation();
   const isHome = location.pathname === '/';
@@ -37,29 +37,41 @@ export default function Navbar() {
           </div>
 
           <div className="flex items-center space-x-6">
+            <div className="hidden lg:flex items-center space-x-4 mr-4 border-r border-gray-800 pr-4">
+              <button 
+                onClick={() => setRole(role === 'student' ? 'teacher' : 'student')}
+                className="text-[10px] font-black uppercase tracking-widest text-emerald-500 hover:text-emerald-400"
+              >
+                Switch to {role === 'student' ? 'Instructor' : 'Learner'}
+              </button>
+            </div>
+
             <Link to="/" className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 hover:text-white transition-colors">
               Catalog
             </Link>
+
             {(user || address) ? (
               <div className="flex items-center space-x-4">
-                <Link to="/dashboard" className="flex items-center space-x-2 bg-gray-900 hover:bg-gray-800 px-4 py-2 rounded-xl transition-all border border-gray-800">
+                <Link to={role === 'teacher' ? '/teacher' : '/dashboard'} className="flex items-center space-x-2 bg-gray-900 hover:bg-gray-800 px-4 py-2 rounded-xl transition-all border border-gray-800">
                   <SafeIcon name="Grid" className="h-4 w-4 text-emerald-400" />
-                  <span className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-200">Portal</span>
+                  <span className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-200">
+                    {role === 'teacher' ? 'Admin' : 'Portal'}
+                  </span>
                 </Link>
                 <div className="hidden sm:block">
                   <ConnectWallet 
                     theme="dark" 
-                    btnTitle="Connect" 
-                    className="!bg-gray-800 !h-10 !px-4 !text-[10px] !font-black !rounded-xl !border-gray-700 !text-gray-300 hover:!bg-gray-700 !uppercase !tracking-widest" 
+                    btnTitle="Connect"
+                    className="!bg-gray-800 !h-10 !px-4 !text-[10px] !font-black !rounded-xl !border-gray-700 !text-gray-300 hover:!bg-gray-700 !uppercase !tracking-widest"
                   />
                 </div>
               </div>
             ) : (
               <div className="flex items-center space-x-4">
                 <ConnectWallet 
-                  theme="dark" 
-                  btnTitle="Sign In" 
-                  className="!bg-emerald-600 !h-10 !px-6 !text-[10px] !font-black !rounded-xl !text-white hover:!bg-emerald-500 !transition-all !uppercase !tracking-widest" 
+                  theme="dark"
+                  btnTitle="Sign In"
+                  className="!bg-emerald-600 !h-10 !px-6 !text-[10px] !font-black !rounded-xl !text-white hover:!bg-emerald-500 !transition-all !uppercase !tracking-widest"
                 />
               </div>
             )}
