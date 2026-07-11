@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  body {
+    @apply font-sans antialiased bg-gray-950 text-gray-100;
+  }
+}
+
+/* Print Styles */
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+  #root {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .min-h-screen {
+    min-height: auto !important;
+    background: none !important;
+  }
+}
