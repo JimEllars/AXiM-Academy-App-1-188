@@ -18,12 +18,14 @@ import GlobalSearch from './components/discovery/GlobalSearch';
 import ExperienceToast from './components/gamification/ExperienceToast';
 import '@questlabs/react-sdk/dist/style.css';
 import './index.css';
+import { thirdwebTheme } from './theme/sdkTheme';
 
 export default function App() {
   return (
     <ThirdwebProvider 
       activeChain="arbitrum" 
       clientId={import.meta.env.VITE_THIRDWEB_CLIENT_ID || "00000000000000000000000000000000"}
+      theme={thirdwebTheme}
     >
       <BrowserRouter>
         <div className="min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-emerald-500/30 flex flex-col">

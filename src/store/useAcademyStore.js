@@ -59,6 +59,18 @@ const MOCK_COURSES = [
   }
 ];
 
+
+// Simulated Supabase background network request
+const backgroundSync = async (endpoint, payload) => {
+  try {
+    console.log(`[BACKGROUND SYNC] ${endpoint}`, payload);
+    // Suppress await fetch or similar
+    await new Promise(r => setTimeout(r, 500));
+  } catch (error) {
+    console.error(`[BACKGROUND SYNC ERROR] ${endpoint}`, error);
+  }
+};
+
 export const useAcademyStore = create(
   persist(
     (set, get) => ({
@@ -144,6 +156,7 @@ export const useAcademyStore = create(
         };
 
         set({ enrollments: [...enrollments, newEnr] });
+        backgroundSync('/api/enrollments', newEnr);
         
         // Reward Enrollment XP
         get().addXp(500, "New Curriculum Linked");
@@ -203,13 +216,15 @@ export const useAcademyStore = create(
               get().addXp(150, "Technical Objective Secured");
             }
 
-            return { 
+            const updatedEnr = {
               ...e, 
               progress: newProgress, 
               status: isCompleted ? 'completed' : 'active', 
               completed_at: isCompleted ? new Date().toISOString() : null,
               dailyQuests: updatedQuests
             };
+            backgroundSync('/api/progress', { enrollmentId, lessonId, newProgress });
+            return updatedEnr;
           })
         }));
       },
