@@ -56,6 +56,12 @@ const MOCK_COURSES = [
   }
 ];
 
+const INITIAL_QUESTS = [
+  { id: 'q1', title: 'Neural Uplink', description: 'Complete 1 lesson today', target: 1, current: 0, rewardXp: 150, type: 'lesson' },
+  { id: 'q2', title: 'AI Dialogue', description: 'Query Onyx AI 3 times', target: 3, current: 0, rewardXp: 100, type: 'ai' },
+  { id: 'q3', title: 'Mastery', description: 'Score 100% on a quiz', target: 1, current: 0, rewardXp: 300, type: 'quiz' }
+];
+
 export const useAcademyStore = create(
   persist(
     (set, get) => ({
@@ -69,15 +75,89 @@ export const useAcademyStore = create(
       searchQuery: '',
       activeCategory: 'All',
       
+      // Gamification State
+      xp: 0,
+      level: 1,
+      streak: 0,
+      lastActivityDate: null,
+      dailyQuests: INITIAL_QUESTS,
+      notifications: [],
+
       setUser: (user) => set({ user }),
       setRole: (role) => set({ role }),
       setWalletAddress: (address) => set({ walletAddress: address }),
       setSearchQuery: (query) => set({ searchQuery: query }),
       setActiveCategory: (category) => set({ activeCategory: category }),
       
-      addAiMessage: (message) => set((state) => ({ 
-        aiChatHistory: [...state.aiChatHistory, { ...message, id: Date.now() }] 
+      addNotification: (notif) => set((state) => ({
+        notifications: [{ ...notif, id: Date.now() }, ...state.notifications].slice(0, 5)
       })),
+
+      addAiMessage: (message) => {
+        set((state) => ({ 
+          aiChatHistory: [...state.aiChatHistory, { ...message, id: Date.now() }] 
+        }));
+        get().updateQuestProgress('ai', 1);
+      },
+
+      updateQuestProgress: (type, amount) => {
+        set((state) => {
+          let xpGained = 0;
+          const newQuests = state.dailyQuests.map(q => {
+            if (q.type === type && q.current < q.target) {
+              const newCurrent = q.current + amount;
+              if (newCurrent >= q.target) {
+                xpGained += q.rewardXp;
+                return { ...q, current: q.target, completed: true };
+              }
+              return { ...q, current: newCurrent };
+            }
+            return q;
+          });
+
+          if (xpGained > 0) {
+            get().addXp(xpGained, `Quest Complete: +${xpGained} XP`);
+          }
+          return { dailyQuests: newQuests };
+        });
+      },
+
+      addXp: (amount, reason) => {
+        set((state) => {
+          const newXp = state.xp + amount;
+          const nextLevelXp = state.level * 1000;
+          let newLevel = state.level;
+          
+          if (newXp >= nextLevelXp) {
+            newLevel += 1;
+            get().addNotification({ title: 'Level Up!', description: `You reached Level ${newLevel}`, type: 'level' });
+          }
+
+          if (reason) {
+            get().addNotification({ title: 'XP Gained', description: reason, type: 'xp' });
+          }
+
+          return { xp: newXp, level: newLevel };
+        });
+      },
+
+      updateStreak: () => {
+        const today = new Date().toDateString();
+        const { lastActivityDate, streak } = get();
+        
+        if (lastActivityDate === today) return;
+
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        if (lastActivityDate === yesterday.toDateString()) {
+          set({ streak: streak + 1, lastActivityDate: today });
+          get().addXp(50 * (streak + 1), `Streak Day ${streak + 1}: Bonus XP!`);
+        } else {
+          set({ streak: 1, lastActivityDate: today });
+          get().addXp(50, 'New Streak Started!');
+        }
+      },
 
       enrollInCourse: (courseId) => {
         const { enrollments } = get();
@@ -91,6 +171,7 @@ export const useAcademyStore = create(
           created_at: new Date().toISOString()
         };
         set({ enrollments: [...enrollments, newEnrollment] });
+        get().addXp(200, 'Course Enrollment: +200 XP');
       },
 
       updateProgress: (enrollmentId, lessonId, score = null) => {
@@ -98,10 +179,18 @@ export const useAcademyStore = create(
           const newEnrollments = state.enrollments.map(enr => {
             if (enr.id === enrollmentId) {
               const alreadyCompleted = enr.progress.some(p => p.lesson_id === lessonId);
-              const newProgress = alreadyCompleted ? enr.progress : [...enr.progress, { lesson_id: lessonId, is_completed: true }];
-              
+              if (alreadyCompleted) return enr;
+
+              const newProgress = [...enr.progress, { lesson_id: lessonId, is_completed: true }];
               const quizScores = { ...enr.quizScores };
-              if (score !== null) quizScores[lessonId] = score;
+              if (score !== null) {
+                quizScores[lessonId] = score;
+                if (score === 100) get().updateQuestProgress('quiz', 1);
+              }
+
+              get().updateQuestProgress('lesson', 1);
+              get().addXp(100, 'Lesson Complete: +100 XP');
+              get().updateStreak();
 
               const course = state.courses.find(c => c.id === enr.course_id);
               const totalLessons = course?.modules.flatMap(m => m.lessons).length || 0;
@@ -114,6 +203,7 @@ export const useAcademyStore = create(
                     set(s => ({ 
                       unlockedBadges: [...s.unlockedBadges, { ...course.badge, unlocked_at: new Date().toISOString() }] 
                     }));
+                    get().addXp(1000, 'Certification Earned: +1000 XP');
                   }, 500);
                 }
               }
@@ -132,6 +222,6 @@ export const useAcademyStore = create(
         });
       }
     }),
-    { name: 'axim-academy-v10' }
+    { name: 'axim-academy-v12' }
   )
 );

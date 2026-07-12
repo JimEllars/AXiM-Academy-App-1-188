@@ -5,10 +5,11 @@ import SafeIcon from '../common/SafeIcon';
 import CourseBuilder from '../components/admin/CourseBuilder';
 import LiveControlPanel from '../components/admin/LiveControlPanel';
 import Gradebook from '../components/admin/Gradebook';
+import PromoManager from '../components/admin/PromoManager';
 
 export default function TeacherDashboard() {
   const { courses, enrollments, addCourse, updateCourse } = useAcademyStore();
-  const [view, setView] = useState('overview'); // 'overview' | 'builder' | 'live' | 'gradebook'
+  const [view, setView] = useState('overview'); // 'overview' | 'builder' | 'live' | 'gradebook' | 'promos'
   const [editingCourse, setEditingCourse] = useState(null);
   const [activeLiveLesson, setActiveLiveLesson] = useState(null);
 
@@ -34,14 +35,25 @@ export default function TeacherDashboard() {
           <h1 className="text-4xl font-black text-white mb-2 uppercase tracking-tighter">Instructor Command</h1>
           <p className="text-gray-500 font-medium">Operations Hub for Onyx AI Senior Architects</p>
         </div>
-        <div className="flex space-x-3">
-          <button onClick={() => setView(view === 'gradebook' ? 'overview' : 'gradebook')} className="bg-gray-900 hover:bg-gray-800 text-white px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border border-gray-800 flex items-center space-x-2">
-            <SafeIcon name={view === 'gradebook' ? 'Grid' : 'Book'} className="h-4 w-4" />
-            <span>{view === 'gradebook' ? 'Deployments' : 'Performance Ledger'}</span>
-          </button>
-          <button onClick={handleCreateNew} className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all shadow-lg shadow-emerald-900/20 flex items-center space-x-2">
-            <SafeIcon name="Plus" className="h-4 w-4" />
-            <span>Architect Curriculum</span>
+        <div className="flex space-x-3 overflow-x-auto pb-2 md:pb-0">
+          {[
+            { id: 'overview', label: 'Overview', icon: 'Grid' },
+            { id: 'gradebook', label: 'Ledger', icon: 'Book' },
+            { id: 'promos', label: 'Promo Hub', icon: 'Zap' }
+          ].map(tab => (
+            <button 
+              key={tab.id}
+              onClick={() => setView(tab.id)}
+              className={`flex items-center space-x-2 px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all border shrink-0 ${
+                view === tab.id ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-gray-900 border-gray-800 text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              <SafeIcon name={tab.icon} className="h-4 w-4" />
+              <span>{tab.label}</span>
+            </button>
+          ))}
+          <button onClick={handleCreateNew} className="bg-white hover:bg-gray-100 text-gray-900 px-8 py-3 rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all shrink-0">
+             + Architect
           </button>
         </div>
       </div>
@@ -50,6 +62,10 @@ export default function TeacherDashboard() {
         {view === 'gradebook' ? (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
             <Gradebook enrollments={enrollments} courses={courses} />
+          </motion.div>
+        ) : view === 'promos' ? (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+            <PromoManager />
           </motion.div>
         ) : view === 'live' ? (
            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
