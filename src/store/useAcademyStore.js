@@ -83,6 +83,7 @@ export const useAcademyStore = create(
       aiChatHistory: [],
       searchQuery: '',
       isSearchOpen: false,
+      isLoading: false,
       activeCategory: 'All',
       
       // Partner & Admin State
@@ -112,6 +113,7 @@ export const useAcademyStore = create(
       // UI Actions
       setSearchQuery: (query) => set({ searchQuery: query }),
       setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen }),
+      setIsLoading: (loading) => set({ isLoading: loading }),
       setActiveCategory: (category) => set({ activeCategory: category }),
 
       // Notification Logic

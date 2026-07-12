@@ -16,7 +16,7 @@ export default function Navbar() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center space-x-8 flex-1">
-            <Link to="/" className="flex items-center space-x-2 group shrink-0">
+            <Link to="/" data-prefetch="true" className="flex items-center space-x-2 group shrink-0">
               <div className="p-1.5 bg-gray-900 rounded-lg group-hover:bg-emerald-500/10 transition-colors border border-gray-800">
                 <SafeIcon name="Hexagon" className="h-6 w-6 text-emerald-500" />
               </div>
@@ -51,11 +51,11 @@ export default function Navbar() {
             <div className="flex items-center space-x-3">
               {(user || address) && <NotificationCenter />}
               
-              <Link to="/" className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 hover:text-white transition-colors hidden sm:block">Catalog</Link>
+              <Link to="/" data-prefetch="true" className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 hover:text-white transition-colors hidden sm:block">Catalog</Link>
               
               {(user || address) ? (
                 <div className="flex items-center space-x-3">
-                  <Link to={role === 'teacher' ? '/teacher' : '/dashboard'} className="flex items-center space-x-2 bg-gray-900 hover:bg-gray-800 px-4 py-2 rounded-xl transition-all border border-gray-800">
+                  <Link to={role === 'teacher' ? '/teacher' : '/dashboard'} data-prefetch="true" className="flex items-center space-x-2 bg-gray-900 hover:bg-gray-800 px-4 py-2 rounded-xl transition-all border border-gray-800">
                     <SafeIcon name={role === 'teacher' ? 'Cpu' : 'Grid'} className="h-4 w-4 text-emerald-400" />
                     <span className="text-[10px] font-black uppercase tracking-[0.15em] text-gray-200 hidden md:block">
                       {role === 'teacher' ? 'Command' : 'Portal'}

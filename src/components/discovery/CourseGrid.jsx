@@ -1,11 +1,13 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAcademyStore } from '../../store/useAcademyStore';
 import SafeIcon from '../../common/SafeIcon';
 import { motion } from 'framer-motion';
+import SkeletonCard from './SkeletonCard';
+import { trackAcademyEvent } from '../../lib/utils';
 
 export default function CourseGrid() {
-  const { courses, searchQuery, activeCategory, setActiveCategory } = useAcademyStore();
+  const { courses, searchQuery, activeCategory, setActiveCategory, isLoading } = useAcademyStore();
   const navigate = useNavigate();
   const categories = ['All', 'Hardware', 'Finance', 'AI', 'Protocol'];
 
@@ -16,6 +18,12 @@ export default function CourseGrid() {
     const matchesCategory = activeCategory === 'All' || course.category === activeCategory;
     return matchesSearch && matchesCategory;
   });
+
+  useEffect(() => {
+    if (!isLoading) {
+      trackAcademyEvent('STOREFRONT_CATALOG_RENDERED', { itemCount: courses.length });
+    }
+  }, [isLoading]); // Intentionally omitting courses to only fire on initial load completion
 
   return (
     <div className="py-8">
@@ -41,7 +49,13 @@ export default function CourseGrid() {
         </div>
       </div>
 
-      {filteredCourses.length === 0 ? (
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {[...Array(4)].map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      ) : filteredCourses.length === 0 ? (
         <div className="py-24 text-center bg-gray-900/40 border-2 border-dashed border-gray-800 rounded-[3rem]">
           <SafeIcon name="Search" className="h-16 w-16 text-gray-700 mx-auto mb-6" />
           <p className="text-gray-500 font-bold uppercase tracking-widest">Zero Matches in Current Array</p>
@@ -55,6 +69,7 @@ export default function CourseGrid() {
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ delay: idx * 0.1 }}
               viewport={{ once: true }}
+              onMouseEnter={() => { if (!window._prefetched) window._prefetched = new Set(); if (!window._prefetched.has(`/course/${course.id}`)) { window._prefetched.add(`/course/${course.id}`); const link = document.createElement('link'); link.rel = 'prefetch'; link.href = `/course/${course.id}`; document.head.appendChild(link); } }}
               onClick={() => navigate(`/course/${course.id}`)}
               className="group cursor-pointer bg-gray-900 border border-gray-800 rounded-[2.5rem] overflow-hidden hover:border-emerald-500/50 transition-all duration-500 shadow-2xl relative flex flex-col"
             >
