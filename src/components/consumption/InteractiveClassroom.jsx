@@ -1,3 +1,4 @@
+import ErrorBoundary from "../../common/ErrorBoundary";
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
@@ -9,7 +10,7 @@ import ResourceVault from './ResourceVault';
 import { useAcademyStore } from '../../store/useAcademyStore';
 import BadgeNotification from '../gamification/BadgeNotification';
 
-export default function InteractiveClassroom({ course, enrollment, onProgress }) {
+function InteractiveClassroom({ course, enrollment, onProgress }) {
   const [activeLessonId, setActiveLessonId] = useState(course.modules[0]?.lessons[0]?.id);
   const [showFeedback, setShowFeedback] = useState(false);
   const [newBadge, setNewBadge] = useState(null);
@@ -157,5 +158,12 @@ export default function InteractiveClassroom({ course, enrollment, onProgress })
         </div>
       </div>
     </div>
+  );
+}
+export default function InteractiveClassroomWithBoundary(props) {
+  return (
+    <ErrorBoundary>
+      <InteractiveClassroom {...props} />
+    </ErrorBoundary>
   );
 }
