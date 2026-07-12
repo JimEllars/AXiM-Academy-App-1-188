@@ -1,4 +1,3 @@
-
 import { darkTheme } from '@thirdweb-dev/react';
 
 export const sdkTheme = {

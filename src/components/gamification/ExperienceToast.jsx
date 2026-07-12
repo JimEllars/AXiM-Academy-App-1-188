@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
-import { useAcademyStore } from '../../store/useAcademyStore';
+import { useAcademyStore } from '@/store/useAcademyStore';
 
 export default function ExperienceToast() {
   const { notifications } = useAcademyStore();
@@ -39,6 +39,7 @@ export default function ExperienceToast() {
             animate={{ opacity: 1, x: 0, scale: 1 }}
             exit={{ opacity: 0, x: 20, scale: 0.8 }}
             className={`px-6 py-4 rounded-2xl border shadow-2xl flex items-center space-x-4 backdrop-blur-xl ${getStyle(activeToast.type)}`}
+            style={{ willChange: 'transform, opacity' }}
           >
             <div className={`p-2.5 rounded-xl ${activeToast.type === 'level' || activeToast.type === 'enrollment' ? 'bg-white/20' : 'bg-emerald-500/20'}`}>
               <SafeIcon name={activeToast.icon || 'Zap'} className="h-5 w-5" />

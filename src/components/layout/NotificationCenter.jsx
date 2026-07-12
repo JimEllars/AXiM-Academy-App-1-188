@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
-import { useAcademyStore } from '../../store/useAcademyStore';
+import { useAcademyStore } from '@/store/useAcademyStore';
 
 export default function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
@@ -50,7 +50,7 @@ export default function NotificationCenter() {
             className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-amber-500/10 border border-amber-500/20 text-amber-500 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest flex items-center space-x-2 backdrop-blur-md"
           >
             <SafeIcon name="RefreshCw" className="h-3 w-3 animate-spin" />
-            <span>Reconnecting to AXiM Core...</span>
+            <span>AXiM Core Link Reconnecting...</span>
           </motion.div>
         )}
       </AnimatePresence>
