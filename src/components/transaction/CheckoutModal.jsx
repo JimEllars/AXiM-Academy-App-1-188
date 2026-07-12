@@ -4,6 +4,7 @@ import { useAcademyStore } from '../../store/useAcademyStore';
 import { useAddress, useSDK } from '@thirdweb-dev/react';
 import IdentityGateway from './IdentityGateway';
 import SafeIcon from '../../common/SafeIcon';
+import { trackAcademyEvent } from '../../lib/utils';
 
 export default function CheckoutModal({ course, onClose }) {
   const address = useAddress();
@@ -16,6 +17,7 @@ export default function CheckoutModal({ course, onClose }) {
   const isAlreadyEnrolled = enrollments.some(e => e.course_id === course.id);
 
   const handleCryptoPayment = async () => {
+    trackAcademyEvent('CHECKOUT_INITIALIZED', { method: 'crypto', courseId: course.id, walletAddress: address });
     if (!address) return;
     
     setIsProcessing(true);
@@ -46,6 +48,7 @@ export default function CheckoutModal({ course, onClose }) {
   };
 
   const handleFiatPayment = async () => {
+    trackAcademyEvent('CHECKOUT_INITIALIZED', { method: 'fiat', courseId: course.id });
     setIsProcessing(true);
     setTxStep('Redirecting to Stripe...');
     await new Promise(r => setTimeout(r, 1500));

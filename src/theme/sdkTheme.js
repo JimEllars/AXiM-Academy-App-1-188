@@ -1,3 +1,6 @@
+
+import { darkTheme } from '@thirdweb-dev/react';
+
 export const sdkTheme = {
   Form: {
     backgroundColor: '#0a0a0a',
@@ -58,3 +61,20 @@ export const sdkTheme = {
     hoverBackground: '#1f2937'
   }
 };
+
+export const thirdwebTheme = darkTheme({
+  colors: {
+    modalBg: '#0a0a0a',
+    primaryButtonBg: '#10b981',
+    primaryButtonText: '#ffffff',
+    secondaryButtonBg: '#1f2937',
+    secondaryButtonText: '#ffffff',
+    secondaryButtonHoverBg: '#374151',
+    borderColor: '#1f2937',
+    separatorLine: '#1f2937',
+    primaryText: '#ffffff',
+    secondaryText: '#9ca3af',
+    connectedButtonBgHover: '#10b981',
+    connectedButtonBg: '#0a0a0a',
+  },
+});

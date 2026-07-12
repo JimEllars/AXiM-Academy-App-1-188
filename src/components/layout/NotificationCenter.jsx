@@ -5,6 +5,28 @@ import { useAcademyStore } from '../../store/useAcademyStore';
 
 export default function NotificationCenter() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+
+  React.useEffect(() => {
+    // Lightweight WebSocket health listener
+    const handleOffline = () => setIsReconnecting(true);
+    const handleOnline = () => setIsReconnecting(false);
+
+    window.addEventListener("offline", handleOffline);
+    window.addEventListener("online", handleOnline);
+
+    // Simulate Supabase Realtime channel dropping/reconnecting
+    const ws = new WebSocket("wss://echo.websocket.events");
+    ws.onclose = () => setIsReconnecting(true);
+    ws.onopen = () => setIsReconnecting(false);
+    ws.onerror = () => setIsReconnecting(true);
+
+    return () => {
+      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("online", handleOnline);
+      ws.close();
+    };
+  }, []);
   const { notifications, clearNotifications } = useAcademyStore();
 
   const getIconColor = (type) => {
@@ -19,6 +41,19 @@ export default function NotificationCenter() {
 
   return (
     <div className="relative">
+      <AnimatePresence>
+        {isReconnecting && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-amber-500/10 border border-amber-500/20 text-amber-500 px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest flex items-center space-x-2 backdrop-blur-md"
+          >
+            <SafeIcon name="RefreshCw" className="h-3 w-3 animate-spin" />
+            <span>Reconnecting to AXiM Core...</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
       <button 
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 text-gray-400 hover:text-white transition-colors bg-gray-900 border border-gray-800 rounded-xl"

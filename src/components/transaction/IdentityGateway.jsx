@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { ConnectWallet, useAddress, useDisconnect } from '@thirdweb-dev/react';
 import { useAcademyStore } from '../../store/useAcademyStore';
 import SafeIcon from '../../common/SafeIcon';
+import { trackAcademyEvent } from '../../lib/utils';
 
 export default function IdentityGateway({ onComplete }) {
   const address = useAddress();
@@ -14,6 +15,7 @@ export default function IdentityGateway({ onComplete }) {
   React.useEffect(() => {
     if (address && address !== walletAddress) {
       setWalletAddress(address);
+      trackAcademyEvent('LOGIN_SUCCESS', { method: 'web3', walletAddress: address });
     }
   }, [address, walletAddress, setWalletAddress]);
 
@@ -21,6 +23,7 @@ export default function IdentityGateway({ onComplete }) {
     e.preventDefault();
     if (email) {
       setUser({ email, id: `usr-${Date.now()}` });
+      trackAcademyEvent('LOGIN_SUCCESS', { method: 'email', userId: email });
       if (onComplete) onComplete();
     }
   };

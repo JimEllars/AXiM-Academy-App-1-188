@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
+import { trackAcademyEvent } from '../../lib/utils';
 
 export default function QuizEngine({ quizData, onComplete }) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -33,6 +34,7 @@ export default function QuizEngine({ quizData, onComplete }) {
         setShowResult(false);
       } else {
         onComplete(100);
+        trackAcademyEvent('QUIZ_COMPLETED', { score: 100, hasFailed });
       }
     } else {
       // Retry logic
