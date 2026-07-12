@@ -136,7 +136,9 @@ function InteractiveClassroom({ course, enrollment, onProgress }) {
                         </button>
                       </div>
                     ) : (
-                      <QuizEngine quizData={activeLesson?.quizData || []} onComplete={handleComplete} />
+                      <ErrorBoundary componentName="QuizEngine">
+                        <QuizEngine quizData={activeLesson?.quizData || []} onComplete={handleComplete} lessonId={activeLessonId} />
+                      </ErrorBoundary>
                     )}
                   </div>
                 )}
@@ -160,10 +162,4 @@ function InteractiveClassroom({ course, enrollment, onProgress }) {
     </div>
   );
 }
-export default function InteractiveClassroomWithBoundary(props) {
-  return (
-    <ErrorBoundary>
-      <InteractiveClassroom {...props} />
-    </ErrorBoundary>
-  );
-}
+export default InteractiveClassroom;

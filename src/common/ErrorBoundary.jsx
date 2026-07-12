@@ -13,7 +13,7 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    trackAcademyEvent('SYSTEM_ERROR', { error: error.message, componentStack: errorInfo.componentStack });
+    trackAcademyEvent('CRITICAL_UI_CRASH', { component: this.props.componentName || 'InteractiveClassroom', error: error.message });
   }
 
   render() {

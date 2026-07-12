@@ -9,7 +9,7 @@ import { trackAcademyEvent } from '@/lib/utils';
 export default function CheckoutModal({ course, onClose }) {
   const address = useAddress();
   const sdk = useSDK();
-  const { enrollInCourse, enrollments } = useAcademyStore();
+  const { enrollInCourse, enrollments, user } = useAcademyStore();
   const [method, setMethod] = useState(null); // 'fiat' or 'crypto'
   const [isProcessing, setIsProcessing] = useState(false);
   const [txStep, setTxStep] = useState('');
@@ -26,7 +26,9 @@ export default function CheckoutModal({ course, onClose }) {
     if (!modalRef.current) return;
 
     const modal = modalRef.current;
-    const firstFocusableElement = modal.querySelectorAll(focusableElements)[0];
+    const allFocusable = Array.from(modal.querySelectorAll(focusableElements));
+    let firstFocusableElement = allFocusable.find(el => el.hasAttribute('data-primary-action') || el.tagName === 'INPUT');
+    if (!firstFocusableElement) firstFocusableElement = allFocusable[0];
     const focusableContent = modal.querySelectorAll(focusableElements);
     const lastFocusableElement = focusableContent[focusableContent.length - 1];
 
@@ -110,7 +112,7 @@ export default function CheckoutModal({ course, onClose }) {
       await new Promise(r => setTimeout(r, 1000));
       onClose();
     } catch (err) {
-      console.error(err);
+      // console.error(err);
       setTxStep('Transaction Failed');
     } finally {
       setIsProcessing(false);
@@ -143,7 +145,7 @@ export default function CheckoutModal({ course, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
       <AnimatePresence mode="wait">
-        {!address && !method ? (
+        {!(address || user) && !method ? (
           <IdentityGateway key="auth" onComplete={() => {}} />
         ) : (
           <motion.div 

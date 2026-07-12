@@ -1,14 +1,34 @@
-import ErrorBoundary from "../../common/ErrorBoundary";
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAcademyStore } from '@/store/useAcademyStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
 import { trackAcademyEvent } from '@/lib/utils';
 
-function QuizEngine({ quizData, onComplete }) {
+function QuizEngine({ quizData, onComplete, lessonId }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showResult, setShowResult] = useState(false);
   const [hasFailed, setHasFailed] = useState(false);
+  const { saveQuizDraft, getQuizDraft } = useAcademyStore();
+
+  useEffect(() => {
+    if (lessonId) {
+      const draft = getQuizDraft(lessonId);
+      if (draft) {
+        setCurrentIndex(draft.currentIndex || 0);
+        setSelectedAnswer(draft.selectedAnswer || null);
+        setShowResult(draft.showResult || false);
+        setHasFailed(draft.hasFailed || false);
+      }
+    }
+  }, [lessonId]);
+
+  useEffect(() => {
+    if (lessonId) {
+      saveQuizDraft(lessonId, { currentIndex, selectedAnswer, showResult, hasFailed });
+    }
+  }, [lessonId, currentIndex, selectedAnswer, showResult, hasFailed]);
+
   
   const currentQuestion = quizData[currentIndex];
   
@@ -114,10 +134,4 @@ function QuizEngine({ quizData, onComplete }) {
     </div>
   );
 }
-export default function QuizEngineWithBoundary(props) {
-  return (
-    <ErrorBoundary>
-      <QuizEngine {...props} />
-    </ErrorBoundary>
-  );
-}
+export default QuizEngine;
