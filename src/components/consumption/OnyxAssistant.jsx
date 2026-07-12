@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
 import { useAcademyStore } from '../../store/useAcademyStore';
+import { trackAcademyEvent } from '../../lib/utils';
 
-export default function OnyxAssistant({ courseTitle }) {
+export default function OnyxAssistant({ courseTitle, lessonId }) {
   const { aiChatHistory, addAiMessage } = useAcademyStore();
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -24,6 +25,9 @@ export default function OnyxAssistant({ courseTitle }) {
     setInput('');
     setIsTyping(true);
 
+    const start = Date.now();
+    trackAcademyEvent('AI_ASSISTANT_QUERY_SUBMITTED', { lessonId });
+
     // Dynamic Mock Responses based on keywords
     setTimeout(() => {
       let response = `As an Onyx AI Architect, I've analyzed your query regarding "${courseTitle}". Based on the system schematics, the primary bottleneck you're describing is typical of Layer-2 congestion. I recommend reviewing the "Edge Network Overview" module for specific relay optimization parameters.`;
@@ -36,6 +40,10 @@ export default function OnyxAssistant({ courseTitle }) {
 
       addAiMessage({ role: 'assistant', content: response });
       setIsTyping(false);
+
+      const latencyMs = Date.now() - start;
+      const mockSignature = `mock-sig-${Date.now()}`;
+      trackAcademyEvent('AI_ASSISTANT_RESPONSE_RESOLVED', { lessonId, status: 'success', latencyMs, mockSignature });
     }, 1500);
   };
 

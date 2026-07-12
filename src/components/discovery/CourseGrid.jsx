@@ -12,7 +12,7 @@ export default function CourseGrid() {
   const categories = ['All', 'Hardware', 'Finance', 'AI', 'Protocol'];
 
   const filteredCourses = courses.filter(course => {
-    if (!course.is_approved) return false;
+    if (course.is_approved !== true) return false;
     const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          course.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = activeCategory === 'All' || course.category === activeCategory;
