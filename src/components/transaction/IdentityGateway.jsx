@@ -1,9 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { ConnectWallet, useAddress, useDisconnect } from '@thirdweb-dev/react';
-import { useAcademyStore } from '../../store/useAcademyStore';
+import { useAcademyStore } from '@/store/useAcademyStore';
+import { thirdwebTheme } from '@/theme/sdkTheme';
 import SafeIcon from '../../common/SafeIcon';
-import { trackAcademyEvent } from '../../lib/utils';
+import { trackAcademyEvent } from '@/lib/utils';
 
 export default function IdentityGateway({ onComplete }) {
   const address = useAddress();
@@ -15,7 +16,8 @@ export default function IdentityGateway({ onComplete }) {
   React.useEffect(() => {
     if (address && address !== walletAddress) {
       setWalletAddress(address);
-      trackAcademyEvent('LOGIN_SUCCESS', { method: 'web3', walletAddress: address });
+      const parsedAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : address;
+      trackAcademyEvent('LOGIN_SUCCESS', { method: 'web3', walletAddress: parsedAddress });
     }
   }, [address, walletAddress, setWalletAddress]);
 
@@ -23,7 +25,9 @@ export default function IdentityGateway({ onComplete }) {
     e.preventDefault();
     if (email) {
       setUser({ email, id: `usr-${Date.now()}` });
-      trackAcademyEvent('LOGIN_SUCCESS', { method: 'email', userId: email });
+      const [name, domain] = email.split('@');
+      const maskedEmail = domain ? `${name.substring(0, 2)}***@${domain}` : email;
+      trackAcademyEvent('LOGIN_SUCCESS', { method: 'email', userId: maskedEmail });
       if (onComplete) onComplete();
     }
   };
@@ -54,7 +58,7 @@ export default function IdentityGateway({ onComplete }) {
           </label>
           <div className="w-full flex justify-center bg-gray-950/50 p-4 rounded-2xl border border-gray-800/50">
             <ConnectWallet 
-              theme="dark" 
+              theme={thirdwebTheme}
               btnTitle="Connect Wallet" 
               className="!w-full !bg-emerald-600 hover:!bg-emerald-500 !text-white !rounded-xl !transition-all !border-none !font-bold" 
             />
