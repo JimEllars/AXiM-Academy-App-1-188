@@ -223,10 +223,37 @@ export const useAcademyStore = create(
               completed_at: isCompleted ? new Date().toISOString() : null,
               dailyQuests: updatedQuests
             };
+            get().clearQuizDraft(lessonId);
             backgroundSync('/api/progress', { enrollmentId, lessonId, newProgress });
             return updatedEnr;
           })
         }));
+      },
+
+
+      // Quiz Caching
+      saveQuizDraft: (lessonId, draft) => {
+        try {
+          sessionStorage.setItem(`quiz_draft_${lessonId}`, JSON.stringify(draft));
+        } catch (err) {
+          console.error("Failed to save quiz draft", err);
+        }
+      },
+      getQuizDraft: (lessonId) => {
+        try {
+          const draft = sessionStorage.getItem(`quiz_draft_${lessonId}`);
+          return draft ? JSON.parse(draft) : null;
+        } catch (err) {
+          console.error("Failed to get quiz draft", err);
+          return null;
+        }
+      },
+      clearQuizDraft: (lessonId) => {
+        try {
+          sessionStorage.removeItem(`quiz_draft_${lessonId}`);
+        } catch (err) {
+          console.error("Failed to clear quiz draft", err);
+        }
       },
 
       addXp: (amount, reason) => {

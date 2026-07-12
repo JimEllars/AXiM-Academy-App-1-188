@@ -19,7 +19,9 @@ export default function IdentityGateway({ onComplete }) {
     if (!modalRef.current) return;
 
     const modal = modalRef.current;
-    const firstFocusableElement = modal.querySelectorAll(focusableElements)[0];
+    const allFocusable = Array.from(modal.querySelectorAll(focusableElements));
+    let firstFocusableElement = allFocusable.find(el => el.hasAttribute('data-primary-action') || el.tagName === 'INPUT');
+    if (!firstFocusableElement) firstFocusableElement = allFocusable[0];
     const focusableContent = modal.querySelectorAll(focusableElements);
     const lastFocusableElement = focusableContent[focusableContent.length - 1];
 
@@ -140,6 +142,7 @@ export default function IdentityGateway({ onComplete }) {
               className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white placeholder-gray-600 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
               placeholder="operator@axim.systems"
               aria-label="Email Address"
+              data-primary-action
             />
           </div>
           <button 

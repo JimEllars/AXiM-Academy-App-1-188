@@ -2,6 +2,7 @@ import React from 'react';
 import { useParams, Navigate } from 'react-router-dom';
 import { useAcademyStore } from '../store/useAcademyStore';
 import InteractiveClassroom from '../components/consumption/InteractiveClassroom';
+import ErrorBoundary from '../common/ErrorBoundary';
 
 export default function Learn() {
   const { courseId } = useParams();
@@ -15,10 +16,12 @@ export default function Learn() {
   }
 
   return (
-    <InteractiveClassroom 
+    <ErrorBoundary componentName="InteractiveClassroom">
+      <InteractiveClassroom
       course={course} 
       enrollment={enrollment} 
       onProgress={(lessonId) => updateProgress(enrollment.id, lessonId)} 
     />
+    </ErrorBoundary>
   );
 }
