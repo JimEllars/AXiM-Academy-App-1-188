@@ -1,9 +1,10 @@
+import ErrorBoundary from "../../common/ErrorBoundary";
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
 import { trackAcademyEvent } from '@/lib/utils';
 
-export default function QuizEngine({ quizData, onComplete }) {
+function QuizEngine({ quizData, onComplete }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showResult, setShowResult] = useState(false);
@@ -111,5 +112,12 @@ export default function QuizEngine({ quizData, onComplete }) {
         )}
       </div>
     </div>
+  );
+}
+export default function QuizEngineWithBoundary(props) {
+  return (
+    <ErrorBoundary>
+      <QuizEngine {...props} />
+    </ErrorBoundary>
   );
 }

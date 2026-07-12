@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAcademyStore } from '@/store/useAcademyStore';
 import { useAddress, useSDK } from '@thirdweb-dev/react';
@@ -18,6 +18,44 @@ export default function CheckoutModal({ course, onClose }) {
   const [isProcessingPromo, setIsProcessingPromo] = useState(false);
   const [promoMessage, setPromoMessage] = useState('');
   const [discount, setDiscount] = useState(0);
+
+  const modalRef = useRef(null);
+
+  useEffect(() => {
+    const focusableElements = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    if (!modalRef.current) return;
+
+    const modal = modalRef.current;
+    const firstFocusableElement = modal.querySelectorAll(focusableElements)[0];
+    const focusableContent = modal.querySelectorAll(focusableElements);
+    const lastFocusableElement = focusableContent[focusableContent.length - 1];
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Tab') {
+        if (e.shiftKey) {
+          if (document.activeElement === firstFocusableElement) {
+            lastFocusableElement.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastFocusableElement) {
+            firstFocusableElement.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+
+    if (firstFocusableElement) {
+      firstFocusableElement.focus();
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [method]); // re-run if content changes
+
 
 
 
@@ -111,6 +149,7 @@ export default function CheckoutModal({ course, onClose }) {
           <motion.div 
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
+            ref={modalRef}
             className="bg-gray-900 border border-gray-800 rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl"
           >
             {/* Header */}
@@ -122,7 +161,7 @@ export default function CheckoutModal({ course, onClose }) {
                   <span className="text-[10px] font-bold uppercase tracking-widest">Encrypted Checkout</span>
                 </div>
               </div>
-              <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors p-2 hover:bg-gray-800 rounded-full">
+              <button onClick={onClose} aria-label="Close modal" className="text-gray-500 hover:text-white transition-colors p-2 hover:bg-gray-800 rounded-full">
                 <SafeIcon name="X" className="h-6 w-6" />
               </button>
             </div>
@@ -148,10 +187,13 @@ export default function CheckoutModal({ course, onClose }) {
                     onChange={(e) => setPromoCode(e.target.value)}
                     className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-2 text-white placeholder-gray-600 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all uppercase"
                     placeholder="ENTER CODE"
+                    aria-label="Promo code input"
                   />
                   <button
                     onClick={handlePromoSubmit}
                     disabled={isProcessingPromo || !promoCode}
+                    aria-label="Apply promo code"
+                    aria-busy={isProcessingPromo}
                     className="bg-gray-800 hover:bg-gray-700 text-white font-bold px-4 py-2 rounded-xl border border-gray-700 transition-all disabled:opacity-50"
                   >
                     {isProcessingPromo ? 'Verifying...' : 'Apply'}
@@ -172,6 +214,7 @@ export default function CheckoutModal({ course, onClose }) {
                     trackAcademyEvent('CHECKOUT_INITIALIZED', { method: 'crypto', courseId: course.id, walletAddress: address });
                   }}
                   className={`p-6 rounded-2xl border transition-all text-left group ${method === 'crypto' ? 'bg-emerald-500/10 border-emerald-500' : 'bg-gray-950 border-gray-800 hover:border-gray-700'}`}
+                  aria-label="Pay with Crypto"
                 >
                   <SafeIcon name="Zap" className={`h-6 w-6 mb-4 ${method === 'crypto' ? 'text-emerald-400' : 'text-gray-500'}`} />
                   <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">Pay with Crypto</p>
@@ -192,6 +235,7 @@ export default function CheckoutModal({ course, onClose }) {
                     trackAcademyEvent('CHECKOUT_INITIALIZED', { method: 'fiat', courseId: course.id });
                   }}
                   className={`p-6 rounded-2xl border transition-all text-left group ${method === 'fiat' ? 'bg-blue-500/10 border-blue-500' : 'bg-gray-950 border-gray-800 hover:border-gray-700'}`}
+                  aria-label="Legacy Payment"
                 >
                   <SafeIcon name="CreditCard" className={`h-6 w-6 mb-4 ${method === 'fiat' ? 'text-blue-400' : 'text-gray-500'}`} />
                   <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">Legacy Payment</p>
@@ -213,6 +257,8 @@ export default function CheckoutModal({ course, onClose }) {
                 <button 
                   onClick={method === 'crypto' ? handleCryptoPayment : handleFiatPayment}
                   disabled={isProcessing}
+                  aria-label={method === 'crypto' ? 'Initialize Smart Contract' : 'Proceed to Checkout'}
+                  aria-busy={isProcessing}
                   className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-sm flex items-center justify-center space-x-3 transition-all ${
                     method === 'crypto' 
                       ? 'bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.2)]' 

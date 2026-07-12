@@ -1,9 +1,20 @@
-import React from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
 import { cn } from '../../lib/utils';
 
 export default function CertificateViewer({ enrollment, course, user }) {
+  const [isMinting, setIsMinting] = useState(true);
+
+  useEffect(() => {
+    // Simulate Edge Worker delay (3-5 seconds) for PDF generation
+    const delay = Math.floor(Math.random() * 2000) + 3000;
+    const timer = setTimeout(() => {
+      setIsMinting(false);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, []);
+
   const completionDate = enrollment.completed_at 
     ? new Date(enrollment.completed_at).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -59,13 +70,33 @@ export default function CertificateViewer({ enrollment, course, user }) {
             <SafeIcon name="Twitter" className="h-5 w-5" />
           </button>
           <div className="h-8 w-px bg-gray-800 mx-2" />
-          <button 
-            onClick={handlePrint}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-lg font-medium transition-all flex items-center space-x-2 shadow-lg shadow-emerald-900/20"
-          >
-            <SafeIcon name="Printer" className="h-4 w-4" />
-            <span>Download PDF</span>
-          </button>
+          <div className="relative min-w-[160px] h-[44px]">
+            <AnimatePresence mode="wait">
+              {isMinting ? (
+                <motion.div
+                  key="loading"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 bg-gray-800 text-gray-400 px-6 py-2.5 rounded-lg font-medium flex items-center justify-center space-x-2 cursor-wait"
+                >
+                  <SafeIcon name="Loader" className="h-4 w-4 animate-spin" />
+                  <span className="text-xs">Minting...</span>
+                </motion.div>
+              ) : (
+                <motion.button
+                  key="download"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  onClick={handlePrint}
+                  className="absolute inset-0 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-2.5 rounded-lg font-medium transition-all flex items-center justify-center space-x-2 shadow-lg shadow-emerald-900/20 w-full"
+                >
+                  <SafeIcon name="Printer" className="h-4 w-4" />
+                  <span>Download PDF</span>
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 

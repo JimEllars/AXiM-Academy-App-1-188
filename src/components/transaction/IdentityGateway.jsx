@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ConnectWallet, useAddress, useDisconnect } from '@thirdweb-dev/react';
 import { useAcademyStore } from '@/store/useAcademyStore';
@@ -11,6 +11,44 @@ export default function IdentityGateway({ onComplete }) {
   const disconnect = useDisconnect();
   const { user, setUser, setWalletAddress, walletAddress } = useAcademyStore();
   const [email, setEmail] = React.useState('');
+
+  const modalRef = useRef(null);
+
+  useEffect(() => {
+    const focusableElements = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+    if (!modalRef.current) return;
+
+    const modal = modalRef.current;
+    const firstFocusableElement = modal.querySelectorAll(focusableElements)[0];
+    const focusableContent = modal.querySelectorAll(focusableElements);
+    const lastFocusableElement = focusableContent[focusableContent.length - 1];
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Tab') {
+        if (e.shiftKey) {
+          if (document.activeElement === firstFocusableElement) {
+            lastFocusableElement.focus();
+            e.preventDefault();
+          }
+        } else {
+          if (document.activeElement === lastFocusableElement) {
+            firstFocusableElement.focus();
+            e.preventDefault();
+          }
+        }
+      }
+    };
+
+    if (firstFocusableElement) {
+      firstFocusableElement.focus();
+    }
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
 
   // Sync Thirdweb state with Zustand store
   React.useEffect(() => {
@@ -36,6 +74,7 @@ export default function IdentityGateway({ onComplete }) {
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
+      ref={modalRef}
       className="bg-gray-900 border border-gray-800 rounded-3xl p-8 max-w-md w-full shadow-2xl relative overflow-hidden"
     >
       {/* Decorative Glow */}
@@ -71,6 +110,7 @@ export default function IdentityGateway({ onComplete }) {
               <button 
                 onClick={disconnect}
                 className="text-[10px] font-bold text-red-400 hover:text-red-300 uppercase tracking-tighter"
+                aria-label="Disconnect wallet"
               >
                 Disconnect
               </button>
@@ -99,11 +139,13 @@ export default function IdentityGateway({ onComplete }) {
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3.5 text-white placeholder-gray-600 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
               placeholder="operator@axim.systems"
+              aria-label="Email Address"
             />
           </div>
           <button 
             type="submit"
             className="w-full bg-gray-800 hover:bg-gray-700 text-white font-bold py-3.5 px-4 rounded-xl border border-gray-700 transition-all flex items-center justify-center space-x-2 group"
+            aria-label="Continue with Email"
           >
             <SafeIcon name="Mail" className="h-4 w-4 text-gray-400 group-hover:text-white transition-colors" />
             <span>Continue with Email</span>
