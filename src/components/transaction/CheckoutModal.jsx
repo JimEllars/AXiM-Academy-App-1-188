@@ -113,6 +113,7 @@ export default function CheckoutModal({ course, onClose }) {
       onClose();
     } catch (err) {
       // console.error(err);
+      trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', { method: 'crypto', courseId: course.id, error: err.message || err });
       setTxStep('Transaction Failed');
     } finally {
       setIsProcessing(false);

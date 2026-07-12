@@ -6,8 +6,8 @@ import { useAcademyStore } from '../../store/useAcademyStore';
 
 export default function GlobalSearch() {
   const { isSearchOpen, setSearchOpen, courses } = useAcademyStore();
-  const [query, setQuery] = useState('');
-  const navigate = useNavigate();
+    const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -21,10 +21,18 @@ export default function GlobalSearch() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [setSearchOpen]);
 
-  const results = query 
-    ? courses.filter(c => c.title.toLowerCase().includes(query.toLowerCase()))
+  useEffect(() => {
+    const debouncer = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, 150);
+    return () => clearTimeout(debouncer);
+  }, [query]);
+
+  const results = debouncedQuery
+    ? courses.filter(c => c.title.toLowerCase().includes(debouncedQuery.toLowerCase()))
     : courses.slice(0, 3);
 
+  const navigate = useNavigate();
   const handleSelect = (courseId) => {
     setSearchOpen(false);
     setQuery('');
