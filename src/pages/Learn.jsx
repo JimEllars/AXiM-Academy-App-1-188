@@ -9,16 +9,16 @@ export default function Learn() {
   
   const course = courses.find(c => c.id === courseId);
   const enrollment = enrollments.find(e => e.course_id === courseId);
-  
+
   if (!course || !enrollment) {
     return <Navigate to="/dashboard" replace />;
   }
-  
+
   return (
     <InteractiveClassroom 
       course={course} 
       enrollment={enrollment} 
-      onProgress={(lessonId) => updateProgress(enrollment.id, lessonId)}
+      onProgress={(lessonId) => updateProgress(enrollment.id, lessonId)} 
     />
   );
 }
