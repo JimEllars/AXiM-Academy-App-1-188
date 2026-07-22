@@ -8,6 +8,7 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showResult, setShowResult] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasFailed, setHasFailed] = useState(false);
   const { saveQuizDraft, getQuizDraft } = useAcademyStore();
 
@@ -33,12 +34,12 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
   const currentQuestion = quizData[currentIndex];
   
   const handleSelect = (key) => {
-    if (showResult) return;
+    if (showResult || isSubmitting) return;
     setSelectedAnswer(key);
   };
   
   const handleSubmit = () => {
-    if (!selectedAnswer) return;
+    if (!selectedAnswer || isSubmitting) return;
     if (selectedAnswer === currentQuestion.correct_answer) {
       setShowResult('correct');
     } else {
@@ -48,15 +49,18 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
   };
   
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    if (isSubmitting) return;
     if (showResult === 'correct') {
       if (currentIndex < quizData.length - 1) {
         setCurrentIndex(c => c + 1);
         setSelectedAnswer(null);
         setShowResult(false);
       } else {
+        setIsSubmitting(true);
         trackAcademyEvent('QUIZ_COMPLETED', { score: 100, hasFailed });
-        onComplete(100);
+        await onComplete(100);
+        setIsSubmitting(false);
       }
     } else {
       // Retry logic
@@ -91,7 +95,7 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
             <button
               key={key}
               onClick={() => handleSelect(key)}
-              disabled={showResult !== false}
+              disabled={showResult !== false || isSubmitting}
               className={`w-full text-left p-4 rounded-xl border transition-all flex items-center space-x-4 ${stateClass}`}
             >
               <div className={`w-8 h-8 rounded border flex items-center justify-center font-bold text-sm ${isSelected ? 'bg-emerald-500/20 border-emerald-500' : 'bg-gray-800 border-gray-700'}`}>
@@ -122,12 +126,12 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
       </AnimatePresence>
       <div className="flex justify-end">
         {!showResult ? (
-          <button onClick={handleSubmit} disabled={!selectedAnswer} className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+          <button onClick={handleSubmit} disabled={!selectedAnswer || isSubmitting} className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white px-6 py-3 rounded-lg font-medium transition-colors">
             Submit Answer
           </button>
         ) : (
-          <button onClick={handleNext} className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-3 rounded-lg border border-gray-700 font-medium transition-colors">
-            {showResult === 'correct' && currentIndex === quizData.length - 1 ? 'Complete Module' : 'Continue'}
+          <button onClick={handleNext} disabled={isSubmitting} className="bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg border border-gray-700 font-medium transition-colors">
+            {isSubmitting ? 'Processing...' : (showResult === 'correct' && currentIndex === quizData.length - 1 ? 'Complete Module' : 'Continue')}
           </button>
         )}
       </div>
