@@ -8,12 +8,13 @@ import CheckoutModal from '../components/transaction/CheckoutModal';
 export default function CourseDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { courses, enrollments } = useAcademyStore();
+  const { courses, enrollments, isLoading } = useAcademyStore();
   const [showCheckout, setShowCheckout] = React.useState(false);
 
   const course = courses.find(c => c.id === id);
   const isEnrolled = enrollments.some(e => e.course_id === id);
 
+  if (isLoading) return <div className="p-20 text-center text-white">Processing secure uplink...</div>;
   if (!course) return <div className="p-20 text-center text-white">Course not found</div>;
 
   return (

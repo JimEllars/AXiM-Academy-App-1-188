@@ -153,7 +153,7 @@ function InteractiveClassroom({ course, enrollment, onProgress }) {
 
             {activeTab === 'ai' && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full flex flex-col">
-                <OnyxAssistant courseTitle={course.title} />
+                <OnyxAssistant courseTitle={course.title} lessonId={activeLessonId} />
               </motion.div>
             )}
           </AnimatePresence>
