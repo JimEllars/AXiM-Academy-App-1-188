@@ -63,6 +63,7 @@ export default function CheckoutModal({ course, onClose }) {
 
   const handlePromoSubmit = async () => {
     if (!promoCode) return;
+    if (isProcessingPromo) return;
     setIsProcessingPromo(true);
     const start = performance.now();
 
@@ -91,6 +92,7 @@ export default function CheckoutModal({ course, onClose }) {
 
   const handleCryptoPayment = async () => {
     if (!address) return;
+    if (isProcessing) return;
     
     setIsProcessing(true);
     setTxStep('Initializing Secure Ledger...');
@@ -121,6 +123,8 @@ export default function CheckoutModal({ course, onClose }) {
   };
 
   const handleFiatPayment = async () => {
+    if (isProcessing) return;
+
     setIsProcessing(true);
     setTxStep('Redirecting to Stripe...');
     await new Promise(r => setTimeout(r, 1500));
