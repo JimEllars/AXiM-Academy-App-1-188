@@ -8,6 +8,8 @@ export default function BadgeNotification({ badge, onClose }) {
   return (
     <AnimatePresence>
       <motion.div
+        role="status"
+        aria-live="polite"
         initial={{ opacity: 0, scale: 0.8, y: 50 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.8, y: 20 }}

@@ -34,6 +34,8 @@ export default function ExperienceToast() {
       <AnimatePresence>
         {visible && (
           <motion.div
+            role="status"
+            aria-live="polite"
             key={activeToast.id}
             initial={{ opacity: 0, x: 50, scale: 0.9 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}

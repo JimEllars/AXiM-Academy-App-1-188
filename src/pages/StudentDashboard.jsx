@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAcademyStore } from '../store/useAcademyStore';
+import { trackAcademyEvent } from '../lib/utils';
 import CredentialWallet from '../components/consumption/CredentialWallet';
 import TrophyCase from '../components/gamification/TrophyCase';
 import Leaderboard from '../components/discovery/Leaderboard';
@@ -14,12 +15,15 @@ import SafeIcon from '../common/SafeIcon';
 export default function StudentDashboard() {
   const { user, walletAddress, enrollments, courses, unlockedBadges, level, xp, streak, dailyQuests } = useAcademyStore();
   
+  useEffect(() => {
+    trackAcademyEvent('DASHBOARD_VIEWED', { userId: user?.id });
+  }, [user?.id]);
+
   if (!user && !walletAddress) {
     return <Navigate to="/" replace />;
   }
 
   const activeEnrollments = enrollments.filter(e => e.status !== 'completed');
-
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <ExperienceToast />
