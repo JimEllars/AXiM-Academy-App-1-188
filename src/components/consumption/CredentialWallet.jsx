@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import SafeIcon from '../../common/SafeIcon';
 import { useAcademyStore } from '../../store/useAcademyStore';
+import { trackAcademyEvent } from '../../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function CredentialWallet() {
@@ -11,6 +12,10 @@ export default function CredentialWallet() {
 
   const handleMint = async (enrId) => {
     setMintingId(enrId);
+    const enrollment = enrollments.find(e => e.id === enrId);
+    if (enrollment) {
+      trackAcademyEvent('CREDENTIAL_CLAIM_INITIATED', { courseId: enrollment.course_id, sbtStatus: 'minting' });
+    }
     // Simulate Blockchain Transaction
     await new Promise(r => setTimeout(r, 3000));
     setMintingId(null);
@@ -67,7 +72,7 @@ export default function CredentialWallet() {
               ) : (
                 <>
                   <Link 
-                    to={`/certificate/${enr.id}`}
+                    to={`/certificate/${enr.id}`} onClick={() => trackAcademyEvent('CREDENTIAL_CLAIM_INITIATED', { courseId: course?.id, sbtStatus: 'pdf' })}
                     className="flex-1 bg-gray-800 hover:bg-gray-700 text-white text-sm font-medium py-2.5 px-4 rounded-lg border border-gray-700 transition-colors flex items-center justify-center space-x-2"
                   >
                     <SafeIcon name="Eye" className="h-4 w-4" />

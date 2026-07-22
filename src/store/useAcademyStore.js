@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { supabase } from '../lib/supabase';
 
 const MOCK_COURSES = [
   {
@@ -107,6 +108,24 @@ export const useAcademyStore = create(
 
       // Auth Actions
       setUser: (user) => set({ user }),
+      ensureActiveSession: async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) return;
+
+          const expiresAt = session.expires_at;
+          const now = Math.floor(Date.now() / 1000);
+          const timeUntilExpiry = expiresAt - now;
+
+          if (timeUntilExpiry < 300) {
+            // Refresh if expiring in less than 5 minutes
+            await supabase.auth.refreshSession();
+          }
+        } catch (err) {
+          console.warn('Session refresh failed silently:', err);
+        }
+      },
+
       setRole: (role) => set({ role }),
       setWalletAddress: (address) => set({ walletAddress: address }),
       
@@ -141,7 +160,8 @@ export const useAcademyStore = create(
       },
 
       // Enrollment & Progress
-      enrollInCourse: (courseId, paymentMethod = 'fiat', txHash = null) => {
+      enrollInCourse: async (courseId, paymentMethod = 'fiat', txHash = null) => {
+        await get().ensureActiveSession();
         const { enrollments, user, courses, walletAddress } = get();
         if (enrollments.some(e => e.course_id === courseId)) return;
         
@@ -182,7 +202,8 @@ export const useAcademyStore = create(
         set(state => ({ earnings: [...state.earnings, earningsRecord] }));
       },
 
-      updateProgress: (enrollmentId, lessonId) => {
+      updateProgress: async (enrollmentId, lessonId) => {
+        await get().ensureActiveSession();
         set(state => ({
           enrollments: state.enrollments.map(e => {
             if (e.id !== enrollmentId) return e;
