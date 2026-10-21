@@ -1,6 +1,12 @@
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
+export const API_ENDPOINTS = {
+  MINT_CREDENTIAL: '/api/v1/credentials/mint',
+  RENDER_PDF: '/api/v1/credentials/render-pdf',
+  CHECKOUT_INITIATE: '/api/v1/checkout/initiate'
+};
+
 export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }

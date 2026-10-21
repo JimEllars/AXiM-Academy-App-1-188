@@ -1,13 +1,18 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAcademyStore } from '../store/useAcademyStore';
 import SafeIcon from '../common/SafeIcon';
+import { trackAcademyEvent } from '../lib/utils';
 
 export default function AdminDashboard() {
-  const { partnerApplications, approvePartner, courses, approveCourse } = useAcademyStore();
+  const { partnerApplications, approvePartner, courses, approveCourse, role } = useAcademyStore();
   
   const pendingApps = partnerApplications.filter(a => a.status === 'pending');
   const pendingCourses = courses.filter(c => !c.is_approved);
+
+  useEffect(() => {
+    trackAcademyEvent('ADMIN_DASHBOARD_VIEWED', { role });
+  }, [role]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-20">

@@ -1,9 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import SafeIcon from '../../common/SafeIcon';
 import { useAcademyStore } from '../../store/useAcademyStore';
+import { trackAcademyEvent } from '../../lib/utils';
 
 export default function FinancialsPanel({ partnerId }) {
   const { earnings, courses } = useAcademyStore();
+
+  useEffect(() => {
+    trackAcademyEvent('FINANCIAL_AUDIT_VIEWED', { timestamp: Date.now() });
+  }, []);
   
   const partnerEarnings = earnings.filter(e => !partnerId || e.partner_id === partnerId);
   const totalPartnerEarned = partnerEarnings.reduce((acc, curr) => acc + curr.amount, 0);
