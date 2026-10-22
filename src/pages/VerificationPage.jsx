@@ -2,25 +2,37 @@ import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../common/SafeIcon';
+import { supabase } from '../lib/supabase';
 
 export default function VerificationPage() {
   const { hash } = useParams();
   const [inputHash, setInputHash] = useState(hash || '');
   const [status, setStatus] = useState('idle'); // idle, searching, found, not_found
 
-  const handleVerify = (e) => {
+  const [certData, setCertData] = useState(null);
+
+  const handleVerify = async (e) => {
     e?.preventDefault();
     if (!inputHash) return;
     
     setStatus('searching');
-    // Simulated blockchain/database lookup
-    setTimeout(() => {
-      if (inputHash.includes('AXM') || inputHash.length > 8) {
-        setStatus('found');
-      } else {
+    try {
+      const { data, error } = await supabase
+        .from('academy_enrollments')
+        .select('id, status, completed_at, sbt_mint_status, academy_courses(title)')
+        .eq('id', inputHash.trim())
+        .single();
+
+      if (error || !data || data.status !== 'completed') {
         setStatus('not_found');
+      } else {
+        setCertData(data);
+        setStatus('found');
       }
-    }, 1500);
+    } catch (err) {
+      console.error(err);
+      setStatus('not_found');
+    }
   };
 
   useEffect(() => {
@@ -71,11 +83,17 @@ export default function VerificationPage() {
               <div className="grid grid-cols-2 gap-4 text-left border-t border-emerald-500/10 pt-6">
                 <div>
                   <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Course Title</p>
-                  <p className="text-sm font-medium text-gray-200">Hardware Link Installation</p>
+                  <p className="text-sm font-medium text-gray-200">{certData?.academy_courses?.title || 'Unknown Course'}</p>
                 </div>
                 <div>
                   <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Issue Date</p>
-                  <p className="text-sm font-medium text-gray-200">January 24, 2024</p>
+                  <p className="text-sm font-medium text-gray-200">{certData?.completed_at ? new Date(certData.completed_at).toLocaleDateString() : 'N/A'}</p>
+                </div>
+                <div className="col-span-2 mt-2">
+                  <p className="text-[10px] uppercase font-bold text-gray-500 mb-1">Credential Status</p>
+                  <p className="text-sm font-medium text-emerald-400">
+                    {certData?.sbt_mint_status === 'minted' ? 'Arbitrum SBT Minted' : 'Verified PDF Certificate'}
+                  </p>
                 </div>
               </div>
             </motion.div>

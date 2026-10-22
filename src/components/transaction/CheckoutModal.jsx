@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '../../lib/supabase';
 import { useAcademyStore } from '@/store/useAcademyStore';
 import { useAddress, useSDK } from '@thirdweb-dev/react';
 import IdentityGateway from './IdentityGateway';
@@ -127,8 +128,19 @@ export default function CheckoutModal({ course, onClose }) {
 
     setIsProcessing(true);
     setTxStep('Redirecting to Stripe...');
+    // Real flow would redirect to /api/v1/checkout/initiate
     await new Promise(r => setTimeout(r, 1500));
     enrollInCourse(course.id, 'fiat');
+    window.location.href = '/api/v1/checkout/initiate'; // As requested
+    onClose();
+  };
+
+  const handleInternalGrant = async () => {
+    if (isProcessing) return;
+    setIsProcessing(true);
+    setTxStep('Authorizing Grant...');
+    await new Promise(r => setTimeout(r, 1000));
+    enrollInCourse(course.id, 'internal_grant');
     onClose();
   };
 
@@ -214,8 +226,29 @@ export default function CheckoutModal({ course, onClose }) {
               </div>
 
               {/* Payment Selector */}
-              <div className="grid grid-cols-2 gap-4">
-                <button 
+              {discount === 100 ? (
+                <div className="mt-6">
+                  <button
+                    onClick={handleInternalGrant}
+                    disabled={isProcessing}
+                    className="w-full py-5 rounded-2xl font-black uppercase tracking-widest text-sm flex items-center justify-center space-x-3 transition-all bg-emerald-600 hover:bg-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.2)] text-white disabled:opacity-50"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <SafeIcon name="Loader" className="h-5 w-5 animate-spin" />
+                        <span>{txStep}</span>
+                      </>
+                    ) : (
+                      <>
+                        <SafeIcon name="Unlock" className="h-5 w-5" />
+                        <span>Unlock Course Immediately</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <button
                   onClick={() => {
                     setMethod('crypto');
                     trackAcademyEvent('CHECKOUT_INITIALIZED', { method: 'crypto', courseId: course.id, walletAddress: address });
@@ -258,9 +291,10 @@ export default function CheckoutModal({ course, onClose }) {
                   </p>
                 </button>
               </div>
+              )}
 
               {/* Action Button */}
-              {method && (
+              {method && discount !== 100 && (
                 <button 
                   onClick={method === 'crypto' ? handleCryptoPayment : handleFiatPayment}
                   disabled={isProcessing}
