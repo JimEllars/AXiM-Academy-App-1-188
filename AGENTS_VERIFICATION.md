@@ -1,12 +1,6 @@
-# AXiM Academy Wave 1 — Verification Proof
+## Production Sprint 11 Verification
 
-## Context & Objectives Achieved
-1. **Live PostgREST Integration**: Successfully connected the frontend storefront directly to Supabase PostgREST for courses, enrollments, and progress via `useAcademyStore.js`.
-2. **Database Migrations Enhanced**: Applied `20260602000000_academy_category_and_seed.sql` to include `category` in `academy_courses`, seed values, and seed promo codes.
-3. **Edge Checkout & Promo Code Routing**: Implemented dynamic Supabase query in `CheckoutModal.jsx` for universal promo-code checkout bypassing when `is_internal_grant` is true. Recalculates cost and dynamically redirects to Stripe endpoint otherwise.
-4. **Category Routing**: Handled inbound `?category=` query params from the main website within `CourseGrid.jsx`, and synchronized `activeCategory` within the component, matching `useAcademyStore.js`.
-5. **Certificate Ledger Checks**: Transferred `VerificationPage.jsx` logic from a static mock timeout loop to an authentic live `academy_enrollments` query check matching user credentials.
-
-## Checklist Run
-- `npm run lint`: Successfully passes (verified).
-- `npm run build`: Successfully built Vite assets. No chunk or JS parse errors present (verified).
+- **Task 1: Universal Promo Router Activation**: Successfully refactored `handlePromoSubmit` in `CheckoutModal.jsx` to query the live Supabase `academy_promo_codes` table. Implemented bypass logic for internal grants where `discount_percentage === 100` and `is_internal_grant === true`.
+- **Task 2: Live Enrollment & Progress Database Writes**: Updated `useAcademyStore.js` `enrollInCourse` to perform live upsert to `academy_enrollments` logging `user_id`, `payment_method`, and `status`. Updated `updateProgress` to perform live upsert to `academy_progress` tracking `quiz_score` and `is_completed`.
+- **Task 3: Transaction Resilience**: Wrapped the Supabase select in `CheckoutModal.jsx` and Supabase upserts in `useAcademyStore.js` with try/catch blocks. Handled failure by aborting state mutation, triggering `trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', ...)` and displaying localized toast notifications.
+- Build verified using `npm run build` without any compilation errors. Linter verified.

@@ -68,25 +68,51 @@ export default function CheckoutModal({ course, onClose }) {
     setIsProcessingPromo(true);
     const start = performance.now();
 
-    // Simulate promo router validation latency
-    await new Promise(r => setTimeout(r, 800));
-    const latency = performance.now() - start;
+    try {
+      const { data: promo, error } = await supabase
+        .from('academy_promo_codes')
+        .select('*')
+        .eq('code', promoCode.trim().toUpperCase())
+        .single();
 
-    // Find promo code in store (or mock validation)
-    const { promoCodes } = useAcademyStore.getState();
-    const promo = promoCodes.find(p => p.code === promoCode.toUpperCase());
+      const latency = performance.now() - start;
 
-    if (promo && promo.uses < promo.max) {
-      setDiscount(promo.discount);
-      setPromoMessage(`${promo.discount}% discount applied!`);
-      trackAcademyEvent('PROMO_APPLIED', { code: promoCode, discount: promo.discount, latencyMs: latency });
-    } else {
+      if (error) {
+        throw error;
+      }
+
+      // We check for uses based on the generic `uses < max` structure if they exist, but if max_uses exists we use that.
+      // Often max is used. If we don't have max or max_uses, we skip limit.
+      const isUnderLimit = typeof promo.max_uses !== 'undefined' ? promo.uses < promo.max_uses : true;
+
+      if (promo && isUnderLimit) {
+        if (promo.discount_percentage === 100 && promo.is_internal_grant === true) {
+          setDiscount(100);
+          setPromoMessage('Internal grant code applied!');
+        } else {
+          setDiscount(promo.discount_percentage || 0);
+          setPromoMessage(`${promo.discount_percentage || 0}% discount applied!`);
+        }
+        trackAcademyEvent('PROMO_APPLIED', { code: promoCode, discount: promo.discount_percentage, latencyMs: latency });
+      } else {
+        setDiscount(0);
+        setPromoMessage('Invalid or expired promo code.');
+        trackAcademyEvent('PROMO_REJECTED', { code: promoCode, latencyMs: latency });
+      }
+    } catch (err) {
+      const latency = performance.now() - start;
       setDiscount(0);
-      setPromoMessage('Invalid or expired promo code.');
-      trackAcademyEvent('PROMO_REJECTED', { code: promoCode, latencyMs: latency });
+      setPromoMessage('Error validating promo code. Please try again later.');
+      trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', { error: err.message, latencyMs: latency });
+      useAcademyStore.getState().addNotification({
+        title: 'Validation Error',
+        description: 'Failed to validate promo code. Please try again later.',
+        type: 'error',
+        icon: 'XCircle'
+      });
+    } finally {
+      setIsProcessingPromo(false);
     }
-
-    setIsProcessingPromo(false);
   };
 
   const isAlreadyEnrolled = enrollments.some(e => e.course_id === course.id);
