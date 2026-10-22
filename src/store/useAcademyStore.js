@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
+import { trackAcademyEvent } from '@/lib/utils';
 
 const MOCK_COURSES = [
   {
@@ -222,21 +223,19 @@ export const useAcademyStore = create(
           newEnr = { ...data, progress: [] };
         } catch (err) {
           console.error('Failed live upsert to enrollments', err);
-          // Fallback to local
-          newEnr = {
-            id: `enr-${Date.now()}`,
-            course_id: courseId,
-            user_id: userId,
-            status: 'active',
-            progress: [],
-            payment_method: paymentMethod,
-            tx_hash: txHash,
-            created_at: new Date().toISOString()
-          };
+          trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', { error: err.message });
+          get().addNotification({
+            title: 'Transaction Failed',
+            description: 'Database connection timed out or rejected request. Please try again later.',
+            type: 'error',
+            icon: 'XCircle'
+          });
+          throw err;
         }
 
         set({ enrollments: [...enrollments, newEnr] });
-        backgroundSync('/api/enrollments', newEnr);
+        // Removing backgroundSync because the live write succeeded
+        // backgroundSync('/api/enrollments', newEnr);
         
         // Reward Enrollment XP
         get().addXp(500, "New Curriculum Linked");
@@ -262,65 +261,76 @@ export const useAcademyStore = create(
 
       updateProgress: async (enrollmentId, lessonId) => {
         await get().ensureActiveSession();
-        set(state => ({
-          enrollments: state.enrollments.map(e => {
-            if (e.id !== enrollmentId) return e;
-            const alreadyCompleted = e.progress.some(p => p.lesson_id === lessonId);
-            if (alreadyCompleted) return e;
-            
-            const newProgress = [...e.progress, { lesson_id: lessonId, is_completed: true, completed_at: new Date().toISOString() }];
-            const course = state.courses.find(c => c.id === e.course_id);
-            const totalLessons = course.modules.flatMap(m => m.lessons).length;
-            const isCompleted = newProgress.length === totalLessons;
 
-            // Update Daily Quests
-            const updatedQuests = state.dailyQuests.map(q => {
-              if (q.id === 'q1' && !q.completed) {
-                const newCurrent = q.current + 1;
-                const completed = newCurrent >= q.target;
-                if (completed) get().addXp(q.rewardXp, "Daily Quest Secured");
-                return { ...q, current: newCurrent, completed };
-              }
-              return q;
-            });
+        try {
+          const { error } = await supabase.from('academy_progress').upsert({
+            enrollment_id: enrollmentId,
+            lesson_id: lessonId,
+            is_completed: true,
+            quiz_score: 100, // Or extract score if provided
+            completed_at: new Date().toISOString()
+          }, { onConflict: 'enrollment_id,lesson_id' });
 
-            if (isCompleted) {
-              get().addXp(1000, "Curriculum Mastery Attained");
-              get().addNotification({
-                title: 'Certification Verified',
-                description: `Operator has successfully mastered ${course.title}.`,
-                type: 'success',
-                icon: 'Award'
+          if (error) throw error;
+
+          set(state => ({
+            enrollments: state.enrollments.map(e => {
+              if (e.id !== enrollmentId) return e;
+              const alreadyCompleted = e.progress.some(p => p.lesson_id === lessonId);
+              if (alreadyCompleted) return e;
+
+              const newProgress = [...e.progress, { lesson_id: lessonId, is_completed: true, completed_at: new Date().toISOString() }];
+              const course = state.courses.find(c => c.id === e.course_id);
+              const totalLessons = course.modules.flatMap(m => m.lessons).length;
+              const isCompleted = newProgress.length === totalLessons;
+
+              // Update Daily Quests
+              const updatedQuests = state.dailyQuests.map(q => {
+                if (q.id === 'q1' && !q.completed) {
+                  const newCurrent = q.current + 1;
+                  const completed = newCurrent >= q.target;
+                  if (completed) get().addXp(q.rewardXp, "Daily Quest Secured");
+                  return { ...q, current: newCurrent, completed };
+                }
+                return q;
               });
-              if (course.badge) get().unlockBadge(course.badge);
-            } else {
-              get().addXp(150, "Technical Objective Secured");
-            }
 
-            const updatedEnr = {
-              ...e, 
-              progress: newProgress, 
-              status: isCompleted ? 'completed' : 'active', 
-              completed_at: isCompleted ? new Date().toISOString() : null,
-              dailyQuests: updatedQuests
-            };
-            get().clearQuizDraft(lessonId);
+              if (isCompleted) {
+                get().addXp(1000, "Curriculum Mastery Attained");
+                get().addNotification({
+                  title: 'Certification Verified',
+                  description: `Operator has successfully mastered ${course.title}.`,
+                  type: 'success',
+                  icon: 'Award'
+                });
+                if (course.badge) get().unlockBadge(course.badge);
+              } else {
+                get().addXp(150, "Technical Objective Secured");
+              }
 
-            // PostgREST Upsert for progress
-            supabase.from('academy_progress').upsert({
-              enrollment_id: enrollmentId,
-              lesson_id: lessonId,
-              is_completed: true,
-              quiz_score: 100, // Or extract score if provided
-              completed_at: new Date().toISOString()
-            }, { onConflict: 'enrollment_id,lesson_id' }).then(({ error }) => {
-              if (error) console.error('Failed to upsert progress', error);
-            });
+              const updatedEnr = {
+                ...e,
+                progress: newProgress,
+                status: isCompleted ? 'completed' : 'active',
+                completed_at: isCompleted ? new Date().toISOString() : null,
+                dailyQuests: updatedQuests
+              };
+              get().clearQuizDraft(lessonId);
 
-            backgroundSync('/api/progress', { enrollmentId, lessonId, newProgress });
-            return updatedEnr;
-          })
-        }));
+              return updatedEnr;
+            })
+          }));
+        } catch (err) {
+          console.error('Failed to upsert progress', err);
+          trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', { error: err.message });
+          get().addNotification({
+            title: 'Progress Sync Failed',
+            description: 'Database connection timed out or rejected request. Please try again later.',
+            type: 'error',
+            icon: 'XCircle'
+          });
+          throw err;
+        }
       },
 
 
