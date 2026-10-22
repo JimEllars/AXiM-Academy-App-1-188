@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAcademyStore } from '../../store/useAcademyStore';
 import SafeIcon from '../../common/SafeIcon';
 import { motion } from 'framer-motion';
@@ -9,13 +9,21 @@ import { trackAcademyEvent } from '../../lib/utils';
 export default function CourseGrid() {
   const { courses, searchQuery, activeCategory, setActiveCategory, isLoading } = useAcademyStore();
   const navigate = useNavigate();
-  const categories = ['All', 'Hardware', 'Finance', 'AI', 'Protocol'];
+  const [searchParams] = useSearchParams();
+  const categoryParam = searchParams.get('category');
+
+  useEffect(() => {
+    if (categoryParam) {
+      setActiveCategory(categoryParam);
+    }
+  }, [categoryParam, setActiveCategory]);
+  const categories = ['All', 'Foundation', 'Creative Labs', 'Professional Edge', 'Hardware', 'AI', 'Protocol'];
 
   const filteredCourses = courses.filter(course => {
     if (course.is_approved !== true) return false;
     const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          course.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = activeCategory === 'All' || course.category === activeCategory;
+    const matchesCategory = activeCategory === 'All' || course.category?.toLowerCase() === activeCategory.toLowerCase();
     return matchesSearch && matchesCategory;
   });
 

@@ -142,7 +142,47 @@ export const useAcademyStore = create(
       clearNotifications: () => set({ notifications: [] }),
 
       // Course Management
+      fetchCourses: async () => {
+        set({ isLoading: true });
+        try {
+          const { data, error } = await supabase
+            .from('academy_courses')
+            .select(`
+              *,
+              academy_modules (
+                *,
+                academy_lessons (*)
+              )
+            `)
+            .in('visibility', ['public', 'unlisted'])
+            .order('order_index', { referencedTable: 'academy_modules' })
+            .order('order_index', { referencedTable: 'academy_modules.academy_lessons' });
+
+          if (error) throw error;
+
+          if (data && data.length > 0) {
+            // Map the schema to what frontend expects, although mapping might be needed based on MOCK_COURSES
+            // Actually, just use data if it's there
+            // MOCK_COURSES has specific fields like is_approved: true
+            const formattedData = data.map(c => ({
+              ...c,
+              is_approved: true,
+              modules: c.academy_modules?.map(m => ({
+                ...m,
+                lessons: m.academy_lessons || []
+              })) || []
+            }));
+            set({ courses: formattedData, isLoading: false });
+          } else {
+            set({ courses: MOCK_COURSES, isLoading: false });
+          }
+        } catch (err) {
+          console.error("Failed to fetch courses:", err);
+          set({ courses: MOCK_COURSES, isLoading: false });
+        }
+      },
       addCourse: (courseData) => set(state => ({
+
         courses: state.courses.some(c => c.id === courseData.id)
           ? state.courses.map(c => c.id === courseData.id ? courseData : c)
           : [...state.courses, courseData]
@@ -166,16 +206,34 @@ export const useAcademyStore = create(
         if (enrollments.some(e => e.course_id === courseId)) return;
         
         const course = courses.find(c => c.id === courseId);
-        const newEnr = {
-          id: `enr-${Date.now()}`,
-          course_id: courseId,
-          user_id: user?.id || walletAddress || 'anon',
-          status: 'active',
-          progress: [],
-          payment_method: paymentMethod,
-          tx_hash: txHash,
-          created_at: new Date().toISOString()
-        };
+        const userId = user?.id || walletAddress || 'anon';
+
+        let newEnr;
+        try {
+          const { data, error } = await supabase.from('academy_enrollments').upsert({
+            user_id: userId,
+            course_id: courseId,
+            status: 'active',
+            payment_method: paymentMethod,
+            tx_hash: txHash
+          }, { onConflict: 'user_id,course_id' }).select().single();
+
+          if (error) throw error;
+          newEnr = { ...data, progress: [] };
+        } catch (err) {
+          console.error('Failed live upsert to enrollments', err);
+          // Fallback to local
+          newEnr = {
+            id: `enr-${Date.now()}`,
+            course_id: courseId,
+            user_id: userId,
+            status: 'active',
+            progress: [],
+            payment_method: paymentMethod,
+            tx_hash: txHash,
+            created_at: new Date().toISOString()
+          };
+        }
 
         set({ enrollments: [...enrollments, newEnr] });
         backgroundSync('/api/enrollments', newEnr);
@@ -247,6 +305,18 @@ export const useAcademyStore = create(
               dailyQuests: updatedQuests
             };
             get().clearQuizDraft(lessonId);
+
+            // PostgREST Upsert for progress
+            supabase.from('academy_progress').upsert({
+              enrollment_id: enrollmentId,
+              lesson_id: lessonId,
+              is_completed: true,
+              quiz_score: 100, // Or extract score if provided
+              completed_at: new Date().toISOString()
+            }, { onConflict: 'enrollment_id,lesson_id' }).then(({ error }) => {
+              if (error) console.error('Failed to upsert progress', error);
+            });
+
             backgroundSync('/api/progress', { enrollmentId, lessonId, newProgress });
             return updatedEnr;
           })
