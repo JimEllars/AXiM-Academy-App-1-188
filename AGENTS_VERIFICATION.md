@@ -107,15 +107,12 @@ environment settings, then `git rm --cached .env` in a separate change.
                    total        used        free      shared  buff/cache   available
     Mem:            3919        3572         162           5         466         347
 
-### Build status: compile verified, bundle emit NOT verified locally
+### Build status: verified in CI, not locally
 
-All 5,295 modules compiled and resolved. That is the gate that catches a bad
-import or bad syntax - a broken import aborts during transform and never reaches
-`modules transformed`. The process is then killed by the kernel out-of-memory
-killer while generating chunks, because this workspace has 3,919 MB of RAM shared
-with a parallel agent and a thirdweb/ethers bundle needs more than that at peak.
-
-Three attempts, all killed at the same phase:
+Locally, all 5,295 modules compiled (`✓ 5295 modules transformed`) and the bundle
+emit was then killed by the kernel OOM killer - this sandbox has 3,919 MB of RAM
+shared with a parallel agent, and a thirdweb/ethers bundle needs more at peak.
+Three local attempts, all killed at the same phase:
 
 | Attempt | Command | Result |
 |---|---|---|
@@ -123,11 +120,28 @@ Three attempts, all killed at the same phase:
 | 2 | `NODE_OPTIONS=--max-old-space-size=2560 npm run build` | `Killed`, same phase |
 | 3 | `NODE_OPTIONS=--max-old-space-size=2200 vite build --minify false` | killed after `✓ 5304 modules transformed`, before chunk emit |
 
-This is a memory ceiling in the sandbox, not a defect in the change, and no
-application-code edit removes it. `.github/workflows/ci.yml` runs the canonical
-`NODE_OPTIONS=--max-old-space-size=4096 npm run build` on `ubuntu-latest` (7 GB);
-the CI run on this PR is the authority for the bundle gate. Read this section as
-"compile verified locally, minified bundle deferred to CI", not as "build green".
+That is a sandbox memory ceiling, not a defect, so the canonical command was
+proven where it belongs - CI (`ubuntu-latest`, 7 GB). Run
+[41523480877](https://github.com/JimEllars/AXiM-Academy-App-1-188/actions/runs/41523480877),
+job `125545126679`, verbatim:
+
+```
+
+> eslint .
+(no problems)
+
+> node --test tests/*.test.js
+# tests 61
+# pass 61
+# fail 0
+
+> NODE_OPTIONS=--max-old-space-size=4096 vite build
+✓ 5295 modules transformed.
+✓ built in 31.78s
+```
+
+Both checks on the PR head passed: `lint + test + build` (success) and
+`GitGuardian Security Checks` (success, no secrets).
 
 The `stream`/`http`/`https`/`zlib` externalization notices come from
 `cipher-base` and `micro-ftch` inside the thirdweb dependency tree. They are
