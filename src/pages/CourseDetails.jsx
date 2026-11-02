@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useAcademyStore } from '../store/useAcademyStore';
 import SafeIcon from '../common/SafeIcon';
 import CheckoutModal from '../components/transaction/CheckoutModal';
+import { buildCatalogHref, normalizeTrack } from '../lib/track';
 
 export default function CourseDetails() {
   const { id } = useParams();
@@ -13,6 +14,10 @@ export default function CourseDetails() {
 
   const course = courses.find(c => c.id === id);
   const isEnrolled = enrollments.some(e => e.course_id === id);
+
+  // Course rows carry their track; an unrecognised value must not render an
+  // empty chip or a dead filter link.
+  const track = normalizeTrack(course?.category, null);
 
   if (isLoading) return <div className="p-20 text-center text-white">Processing secure uplink...</div>;
   if (!course) return <div className="p-20 text-center text-white">Course not found</div>;
@@ -35,9 +40,18 @@ export default function CourseDetails() {
               animate={{ opacity: 1, y: 0 }}
             >
               <div className="flex items-center space-x-3 mb-4">
-                <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest rounded-full">
-                  {course.category}
-                </span>
+                {track ? (
+                  <button
+                    onClick={() => navigate(buildCatalogHref(track))}
+                    className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest rounded-full hover:bg-emerald-500/20 transition-colors"
+                  >
+                    {track}
+                  </button>
+                ) : (
+                  <span className="px-3 py-1 bg-gray-800 border border-gray-700 text-gray-400 text-xs font-bold uppercase tracking-widest rounded-full">
+                    {course.category || 'Unfiled'}
+                  </span>
+                )}
                 <span className="text-gray-400 text-sm font-medium">• {course.duration}</span>
               </div>
               <h1 className="text-4xl md:text-6xl font-black text-white mb-6 uppercase tracking-tight">

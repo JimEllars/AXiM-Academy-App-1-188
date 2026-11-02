@@ -1,10 +1,17 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import HeroCatalog from '../components/discovery/HeroCatalog';
 import CourseGrid from '../components/discovery/CourseGrid';
 import Leaderboard from '../components/discovery/Leaderboard';
 import SafeIcon from '../common/SafeIcon';
+import { useTrackParam } from '../hooks/useTrackParam';
+import { TRACKS, buildCatalogHref } from '../lib/track';
 
 export default function Home() {
+  const navigate = useNavigate();
+  // Absorbs ?category= / ?track= into the storefront filter on mount.
+  const { activeTrack } = useTrackParam();
+
   return (
     <main className="bg-gray-950">
       <HeroCatalog />
@@ -34,8 +41,7 @@ export default function Home() {
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-12 py-12 px-4">
         <div className="lg:col-span-3">
           <CourseGrid />
-        </div>
-        <div className="lg:col-span-1 pt-16">
+        </div>        <div className="lg:col-span-1 pt-16">
           <div className="sticky top-24 space-y-8">
             <div className="bg-emerald-600/10 border border-emerald-500/20 p-8 rounded-[2.5rem] relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -46,11 +52,32 @@ export default function Home() {
                 Do you possess proprietary technical knowledge? Apply to become an Architect and distribute your curricula across the AXiM ecosystem.
               </p>
               <button 
-                onClick={() => window.location.hash = '#/partner-apply'}
+                onClick={() => navigate('/partner-apply')}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] transition-all shadow-xl shadow-emerald-900/20"
               >
                 Initiate Application
               </button>
+            </div>
+
+            {/* Ladder of Value: static track jump-links, so a shared URL and a
+                chip click always describe the same filter. */}
+            <div className="bg-gray-900 border border-gray-800 p-6 rounded-[2rem]">
+              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4">Ladder of Value</p>
+              <div className="space-y-2">
+                {TRACKS.slice(0, 3).map((track) => (
+                  <button
+                    key={track}
+                    onClick={() => navigate(buildCatalogHref(track))}
+                    className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors border ${
+                      activeTrack === track
+                        ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
+                        : 'bg-gray-950 border-gray-800 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {track}
+                  </button>
+                ))}
+              </div>
             </div>
             
             <Leaderboard />

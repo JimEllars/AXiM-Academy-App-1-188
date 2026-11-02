@@ -1,5 +1,6 @@
 import ErrorBoundary from "../../common/ErrorBoundary";
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
 import QuizEngine from './QuizEngine';
@@ -11,6 +12,7 @@ import { useAcademyStore } from '../../store/useAcademyStore';
 import BadgeNotification from '../gamification/BadgeNotification';
 
 function InteractiveClassroom({ course, enrollment, onProgress }) {
+  const navigate = useNavigate();
   const [activeLessonId, setActiveLessonId] = useState(course.modules[0]?.lessons[0]?.id);
   const [showFeedback, setShowFeedback] = useState(false);
   const [newBadge, setNewBadge] = useState(null);
@@ -113,10 +115,10 @@ function InteractiveClassroom({ course, enrollment, onProgress }) {
                     <h1 className="text-4xl font-black text-white uppercase tracking-tighter mb-4">Certification Complete</h1>
                     <p className="text-gray-400 mb-12">Your performance has been logged on the AXiM Ledger. Access your credentials in the Command Center.</p>
                     <div className="flex space-x-4 justify-center">
-                      <button onClick={() => window.location.hash = '#/dashboard'} className="bg-gray-800 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs border border-gray-700 hover:bg-gray-700 transition-all">
+                      <button onClick={() => navigate('/dashboard')} className="bg-gray-800 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs border border-gray-700 hover:bg-gray-700 transition-all">
                         Command Center
                       </button>
-                      <button onClick={() => window.location.hash = `#/certificate/${enrollment.id}`} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-900/20 hover:bg-emerald-500 transition-all">
+                      <button onClick={() => navigate(`/certificate/${enrollment.id}`)} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-lg shadow-emerald-900/20 hover:bg-emerald-500 transition-all">
                          View Certificate
                       </button>
                     </div>

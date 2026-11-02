@@ -1,7 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { supabase } from '../lib/supabase';
+import { supabase, supabaseConfigured } from '../lib/supabase';
 import { trackAcademyEvent } from '@/lib/utils';
+import {
+  buildEnrollmentPayload,
+  buildProgressPayload,
+  stripOptionalColumns,
+  isUnknownColumnError,
+  isUuid,
+  EnrollmentPayloadError
+} from '../lib/enrollmentPayload';
 
 const MOCK_COURSES = [
   {
@@ -77,6 +85,9 @@ export const useAcademyStore = create(
   persist(
     (set, get) => ({
       user: null,
+      // Supabase auth user id. Distinct from `user`, which carries the display
+      // identity (email or wallet label) and may be a non-uuid placeholder.
+      authUserId: null,
       role: 'student',
       walletAddress: null,
       courses: MOCK_COURSES,
@@ -109,7 +120,58 @@ export const useAcademyStore = create(
 
       // Auth Actions
       setUser: (user) => set({ user }),
+
+      /**
+       * Resolve the uuid that `academy_enrollments.user_id` requires.
+       *
+       * The email login path mints a display id (`usr-1234...`) and the wallet
+       * path has only a 0x address; neither is a uuid, so both used to reach the
+       * INSERT and fail. Anonymous Supabase sessions give a real uuid in the
+       * `authenticated` role, which is what the RLS insert policy checks.
+       */
+      ensureLearnerId: async () => {
+        const { authUserId, user } = get();
+        if (isUuid(user?.id)) {
+          if (authUserId !== user.id) set({ authUserId: user.id });
+          return user.id;
+        }
+        if (!supabaseConfigured) {
+          throw new EnrollmentPayloadError(
+            'BACKEND_NOT_CONFIGURED',
+            'This build has no Supabase credentials configured, so enrollment cannot be recorded.'
+          );
+        }
+
+        try {
+          // The live session wins over anything cached in the store: after a
+          // sign-out or a project switch, a persisted id no longer matches
+          // auth.uid() and the insert would be denied by RLS.
+          const { data: { session } } = await supabase.auth.getSession();
+          if (isUuid(session?.user?.id)) {
+            set({ authUserId: session.user.id });
+            return session.user.id;
+          }
+
+          if (isUuid(authUserId)) {
+            return authUserId;
+          }
+
+          const { data, error } = await supabase.auth.signInAnonymously();
+          if (error) throw error;
+          const id = data?.user?.id;
+          if (!isUuid(id)) throw new Error('Anonymous sign-in returned no user id');
+          set({ authUserId: id });
+          return id;
+        } catch (err) {
+          throw new EnrollmentPayloadError(
+            'AUTH_REQUIRED',
+            `Sign-in is required to record enrollment (${err.message}). Enable anonymous sign-ins in Supabase, or sign the learner in first.`
+          );
+        }
+      },
+
       ensureActiveSession: async () => {
+        if (!supabaseConfigured) return;
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) return;
@@ -145,6 +207,13 @@ export const useAcademyStore = create(
       // Course Management
       fetchCourses: async () => {
         set({ isLoading: true });
+        if (!supabaseConfigured) {
+          // Placeholder credentials: keep the seeded catalog rather than
+          // rendering an empty storefront behind a failed request.
+          console.warn('[AXiM Academy] Supabase is not configured; serving the local course seed.');
+          set({ courses: MOCK_COURSES, isLoading: false });
+          return;
+        }
         try {
           const { data, error } = await supabase
             .from('academy_courses')
@@ -201,36 +270,80 @@ export const useAcademyStore = create(
       },
 
       // Enrollment & Progress
-      enrollInCourse: async (courseId, paymentMethod = 'fiat', txHash = null) => {
+      /**
+       * Enroll a learner.
+       *
+       * `options` may also be passed positionally for backward compatibility:
+       *   enrollInCourse(id, 'crypto', txHash)
+       *   enrollInCourse(id, { paymentMethod: 'crypto', txHash, affiliateId })
+       */
+      enrollInCourse: async (courseId, options = {}, legacyTxHash = null) => {
+        const opts = typeof options === 'string'
+          ? { paymentMethod: options, txHash: legacyTxHash }
+          : (options || {});
+
         await get().ensureActiveSession();
-        const { enrollments, user, courses, walletAddress } = get();
-        if (enrollments.some(e => e.course_id === courseId)) return;
-        
+        const { enrollments, courses, walletAddress } = get();
+        if (enrollments.some(e => e.course_id === courseId)) {
+          return enrollments.find(e => e.course_id === courseId);
+        }
+
+        if (!supabaseConfigured) {
+          throw new EnrollmentPayloadError(
+            'BACKEND_NOT_CONFIGURED',
+            'Commerce backend is not configured for this build. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then retry.'
+          );
+        }
+
+        const userId = await get().ensureLearnerId();
+        const payload = buildEnrollmentPayload({
+          userId,
+          courseId,
+          paymentMethod: opts.paymentMethod || 'fiat',
+          txHash: opts.txHash || null,
+          stripeIntent: opts.stripeIntent || null,
+          walletAddress: opts.walletAddress || walletAddress || null,
+          promoCode: opts.promoCode || null,
+          affiliateId: opts.affiliateId || null
+        });
+
         const course = courses.find(c => c.id === courseId);
-        const userId = user?.id || walletAddress || 'anon';
-
         let newEnr;
-        try {
-          const { data, error } = await supabase.from('academy_enrollments').upsert({
-            user_id: userId,
-            course_id: courseId,
-            status: 'active',
-            payment_method: paymentMethod,
-            tx_hash: txHash
-          }, { onConflict: 'user_id,course_id' }).select().single();
+        let attempt = payload;
 
-          if (error) throw error;
-          newEnr = { ...data, progress: [] };
-        } catch (err) {
-          console.error('Failed live upsert to enrollments', err);
-          trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', { error: err.message });
-          get().addNotification({
-            title: 'Transaction Failed',
-            description: 'Database connection timed out or rejected request. Please try again later.',
-            type: 'error',
-            icon: 'XCircle'
+        // Retry path for a database that has not applied the 2026-11-02
+        // migration yet: drop the newest columns one at a time rather than
+        // failing checkout on a schema skew the learner cannot fix.
+        for (;;) {
+          const { data, error } = await supabase
+            .from('academy_enrollments')
+            .upsert(attempt, { onConflict: 'user_id,course_id' })
+            .select()
+            .single();
+
+          if (!error) {
+            newEnr = { ...data, progress: [] };
+            break;
+          }
+
+          const stripped = isUnknownColumnError(error) ? stripOptionalColumns(attempt) : null;
+          if (!stripped || Object.keys(stripped).length === Object.keys(attempt).length) {
+            console.error('Failed live upsert to enrollments', error);
+            trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', { error: error.message, code: error.code });
+            get().addNotification({
+              title: 'Transaction Failed',
+              description: 'Enrollment could not be recorded. Please try again later.',
+              type: 'error',
+              icon: 'XCircle'
+            });
+            throw error;
+          }
+
+          trackAcademyEvent('ENROLLMENT_SCHEMA_DEGRADED', {
+            dropped: Object.keys(attempt).filter(k => !(k in stripped)),
+            code: error.code
           });
-          throw err;
+          attempt = stripped;
         }
 
         set({ enrollments: [...enrollments, newEnr] });
@@ -247,31 +360,95 @@ export const useAcademyStore = create(
           icon: 'Activity'
         });
 
-        // Track Earnings for Admin/Teacher
-        const earningsRecord = {
-          id: `earn-${Date.now()}`,
-          course_id: courseId,
-          partner_id: course.instructor_id,
-          amount: course.price_usd * 0.75,
-          platform_amount: course.price_usd * 0.25,
-          timestamp: new Date().toISOString()
-        };
-        set(state => ({ earnings: [...state.earnings, earningsRecord] }));
+        let earningsRecord = null;
+        if (course?.instructor_id && Number.isFinite(Number(course.price_usd))) {
+          const gross = Number(course.price_usd);
+          const partnerShare = Number.isFinite(Number(course.revenue_share)) ? Number(course.revenue_share) : 75;
+          earningsRecord = {
+            id: `earn-${Date.now()}`,
+            course_id: courseId,
+            partner_id: course.instructor_id,
+            amount: gross * (partnerShare / 100),
+            platform_amount: gross * (1 - partnerShare / 100),
+            timestamp: new Date().toISOString()
+          };
+          set(state => ({ earnings: [...state.earnings, earningsRecord] }));
+        }
+
+        return newEnr;
+      },
+
+      /**
+       * Record the outcome of a wallet-side SBT mint.
+       *
+       * `sbt_mint_status` is credential state and stays server-owned: the
+       * column grant in the 2026-11-02 migration deliberately denies it to the
+       * browser. Only the tx hash is persisted from here; anything else waits
+       * for the credential Edge Function to confirm on-chain.
+       */
+      markCredentialMinted: async (enrollmentId, { txHash = null, ledgerSynced = false } = {}) => {
+        let patchFailed = false;
+
+        if (supabaseConfigured && txHash) {
+          const { error } = await supabase
+            .from('academy_enrollments')
+            .update({ tx_hash: txHash })
+            .eq('id', enrollmentId);
+          patchFailed = Boolean(error);
+        }
+
+        set(state => ({
+          enrollments: state.enrollments.map(e => (
+            e.id === enrollmentId
+              ? {
+                  ...e,
+                  sbt_mint_status: ledgerSynced ? 'minted' : 'pending',
+                  tx_hash: txHash ?? e.tx_hash ?? null,
+                  sbt_ledger_synced: ledgerSynced
+                }
+              : e
+          ))
+        }));
+
+        get().addNotification({
+          title: ledgerSynced ? 'Credential Minted' : 'Mint Submitted',
+          description: ledgerSynced
+            ? 'Soulbound token confirmed on Arbitrum One.'
+            : 'Transaction submitted. The ledger sync completes once the credential service confirms the block.',
+          type: ledgerSynced ? 'success' : 'info',
+          icon: 'Hexagon'
+        });
+
+        return { ledgerSynced, patchFailed };
+      },
+
+      /** Best-effort persistence of the printed certificate hash. */
+      persistCertificateHash: async (enrollmentId, hashHex) => {
+        if (!supabaseConfigured || !enrollmentId || !hashHex) return false;
+        const { error } = await supabase
+          .from('academy_enrollments')
+          .update({ certificate_hash: hashHex })
+          .eq('id', enrollmentId);
+        if (error) {
+          trackAcademyEvent('CERTIFICATE_HASH_PERSIST_FAILED', { enrollmentId, code: error.code });
+          return false;
+        }
+        return true;
       },
 
       updateProgress: async (enrollmentId, lessonId) => {
         await get().ensureActiveSession();
 
         try {
-          const { error } = await supabase.from('academy_progress').upsert({
-            enrollment_id: enrollmentId,
-            lesson_id: lessonId,
-            is_completed: true,
-            quiz_score: 100, // Or extract score if provided
-            completed_at: new Date().toISOString()
-          }, { onConflict: 'enrollment_id,lesson_id' });
+          if (supabaseConfigured) {
+            const { error } = await supabase
+              .from('academy_progress')
+              .upsert(buildProgressPayload({ enrollmentId, lessonId, quizScore: 100 }), {
+                onConflict: 'enrollment_id,lesson_id'
+              });
 
-          if (error) throw error;
+            if (error) throw error;
+          }
 
           set(state => ({
             enrollments: state.enrollments.map(e => {
