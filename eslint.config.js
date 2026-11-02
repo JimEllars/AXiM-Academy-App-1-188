@@ -9,7 +9,7 @@ export default [
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
-      ecmaVersion: 2020,
+      ecmaVersion: 2022, // numeric separators in tests, optional chaining in src
       globals: {
         ...globals.browser,
         ...globals.node,

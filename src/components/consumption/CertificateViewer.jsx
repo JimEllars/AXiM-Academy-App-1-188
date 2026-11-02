@@ -2,9 +2,41 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
 import { cn } from '../../lib/utils';
+import { useAcademyStore } from '../../store/useAcademyStore';
+import {
+  hashEnrollment,
+  formatCredentialHash,
+  buildVerifyPath,
+  resolveIssuedAt,
+} from '../../lib/credentialHash';
 
 export default function CertificateViewer({ enrollment, course, user }) {
   const [isMinting, setIsMinting] = useState(true);
+  const [verificationHash, setVerificationHash] = useState('');
+  const [hashError, setHashError] = useState(null);
+  const persistCertificateHash = useAcademyStore((state) => state.persistCertificateHash);
+
+  // The digest is what makes the printed fields checkable, so it is computed
+  // from the stored record rather than invented from the id.
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const hash = await hashEnrollment(enrollment, course?.id);
+        if (cancelled) return;
+        setVerificationHash(hash);
+        persistCertificateHash(enrollment.id, hash);
+      } catch (err) {
+        if (cancelled) return;
+        setHashError(err.message);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enrollment, course?.id, persistCertificateHash]);
 
   useEffect(() => {
     // Simulate Edge Worker delay (3-5 seconds) for PDF generation
@@ -15,20 +47,12 @@ export default function CertificateViewer({ enrollment, course, user }) {
     return () => clearTimeout(timer);
   }, []);
 
-  const completionDate = enrollment.completed_at 
-    ? new Date(enrollment.completed_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
-    : new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-
-  const verificationHash = enrollment.id.split('-')[1]?.toUpperCase() || 'AXM-VER-8821';
-
+  const issuedAt = resolveIssuedAt(enrollment);
+  const completionDate = new Date(issuedAt || Date.now()).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
   const handlePrint = () => window.print();
 
   const shareToLinkedIn = () => {
@@ -139,7 +163,7 @@ export default function CertificateViewer({ enrollment, course, user }) {
 
           <div className="mt-auto w-full grid grid-cols-3 gap-8 items-end">
             <div className="text-left">
-              <p className="text-xs font-bold uppercase text-gray-400 mb-1">Date of Issue</p>
+              <p className="text-[10px] font-bold uppercase text-gray-400 mb-1">Date of Issue</p>
               <p className="text-sm font-bold">{completionDate}</p>
             </div>
 
@@ -147,8 +171,13 @@ export default function CertificateViewer({ enrollment, course, user }) {
               <div className="mb-4">
                 <SafeIcon name="ShieldCheck" className="h-16 w-16 text-emerald-500/20" />
               </div>
-              <p className="text-[10px] font-mono text-gray-400 break-all max-w-[180px]">
-                HASH: {verificationHash}
+              <p className="text-[9px] font-mono text-gray-500 break-all max-w-[220px]" title={verificationHash || 'computing'}
+              >
+                {verificationHash
+                  ? `SHA-256: ${formatCredentialHash(verificationHash)}`
+                  : hashError
+                    ? 'HASH UNAVAILABLE'
+                    : 'Computing digest...'}
               </p>
             </div>
 
@@ -169,7 +198,15 @@ export default function CertificateViewer({ enrollment, course, user }) {
 
       <div className="mt-8 text-center text-gray-500 text-sm print:hidden">
         <p>This certificate is cryptographically linked to the AXiM Core Ledger.</p>
-        <p className="mt-1">Verify at <span className="text-emerald-500">academy.axim.systems/verify/{verificationHash}</span></p>
+        <p className="mt-1">
+          Verify at{' '}
+          <a
+            className="text-emerald-500 break-all"
+            href={verificationHash ? buildVerifyPath(verificationHash) : '/verify'}
+          >
+            {`academy.axim.systems${verificationHash ? buildVerifyPath(verificationHash) : '/verify'}`}
+          </a>
+        </p>
       </div>
     </div>
   );

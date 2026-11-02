@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { ThirdwebProvider } from '@thirdweb-dev/react';
 import Home from './pages/Home';
 import StudentDashboard from './pages/StudentDashboard';
@@ -19,6 +19,14 @@ import ExperienceToast from './components/gamification/ExperienceToast';
 import '@questlabs/react-sdk/dist/style.css';
 import './index.css';
 import { thirdwebTheme } from './theme/sdkTheme';
+import { useAffiliateCapture } from './hooks/useAffiliateCapture';
+
+/** Captures ?ref=<affiliateId> from any landing route into sessionStorage. */
+function AffiliateCapture() {
+  const location = useLocation();
+  useAffiliateCapture(location.search);
+  return null;
+}
 
 export default function App() {
   return (
@@ -28,6 +36,7 @@ export default function App() {
       theme={thirdwebTheme}
     >
       <BrowserRouter>
+        <AffiliateCapture />
         <div className="min-h-screen bg-gray-950 text-gray-100 font-sans selection:bg-emerald-500/30 flex flex-col">
           <GlobalSearch />
           <ExperienceToast />

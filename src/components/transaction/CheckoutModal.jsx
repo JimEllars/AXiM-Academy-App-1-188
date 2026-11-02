@@ -1,11 +1,70 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabaseConfigured } from '../../lib/supabase';
 import { useAcademyStore } from '@/store/useAcademyStore';
 import { useAddress, useSDK } from '@thirdweb-dev/react';
 import IdentityGateway from './IdentityGateway';
 import SafeIcon from '../../common/SafeIcon';
-import { trackAcademyEvent } from '@/lib/utils';
+import { API_ENDPOINTS, trackAcademyEvent } from '@/lib/utils';
+import { getAffiliateRef } from '@/lib/affiliate';
+import { EnrollmentPayloadError } from '@/lib/enrollmentPayload';
+
+/**
+ * Validate a promo code server-side.
+ *
+ * The RPC is the supported path once RLS is enabled on `academy_promo_codes`
+ * (that table was world-readable, including the 100% internal grants). The
+ * table select stays as a fallback for a database that has not had the
+ * migration applied yet.
+ */
+async function validatePromoCode(code) {
+  const normalized = code.trim().toUpperCase();
+
+  if (!supabaseConfigured) {
+    return {
+      status: 'unavailable',
+      message: 'Commerce backend is not configured for this build, so promo codes cannot be validated.',
+    };
+  }
+
+  const { data: rpcData, error: rpcError } = await supabase
+    .rpc('academy_validate_promo', { p_code: normalized });
+
+  if (!rpcError) {
+    const promo = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    if (!promo) return { status: 'invalid', message: 'Invalid or expired promo code.' };
+    return {
+      status: 'valid',
+      discount: Number(promo.discount_percentage) || 0,
+      isInternalGrant: promo.is_internal_grant === true,
+      affiliateId: promo.linked_affiliate_id || null,
+      code: promo.code || normalized,
+    };
+  }
+
+  const functionMissing = ['PGRST202', '42883', '404'].includes(String(rpcError.code));
+  if (!functionMissing) throw rpcError;
+
+  const { data: promo, error } = await supabase
+    .from('academy_promo_codes')
+    .select('code, discount_percentage, is_internal_grant, max_uses, uses, linked_affiliate_id')
+    .eq('code', normalized)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!promo) return { status: 'invalid', message: 'Invalid or expired promo code.' };
+  if (typeof promo.max_uses === 'number' && promo.uses >= promo.max_uses) {
+    return { status: 'invalid', message: 'This code has reached its usage limit.' };
+  }
+
+  return {
+    status: 'valid',
+    discount: Number(promo.discount_percentage) || 0,
+    isInternalGrant: promo.is_internal_grant === true,
+    affiliateId: promo.linked_affiliate_id || null,
+    code: promo.code || normalized,
+  };
+}
 
 export default function CheckoutModal({ course, onClose }) {
   const address = useAddress();
@@ -18,9 +77,17 @@ export default function CheckoutModal({ course, onClose }) {
   const [promoCode, setPromoCode] = useState('');
   const [isProcessingPromo, setIsProcessingPromo] = useState(false);
   const [promoMessage, setPromoMessage] = useState('');
+  const [promoIsError, setPromoIsError] = useState(false);
   const [discount, setDiscount] = useState(0);
+  const [appliedPromo, setAppliedPromo] = useState(null);
+  const [affiliateId, setAffiliateId] = useState(null);
 
   const modalRef = useRef(null);
+
+  // Attribution captured from ?ref= when the learner first landed on the site.
+  useEffect(() => {
+    setAffiliateId(getAffiliateRef());
+  }, []);
 
   useEffect(() => {
     const focusableElements = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -69,50 +136,69 @@ export default function CheckoutModal({ course, onClose }) {
     const start = performance.now();
 
     try {
-      const { data: promo, error } = await supabase
-        .from('academy_promo_codes')
-        .select('*')
-        .eq('code', promoCode.trim().toUpperCase())
-        .single();
-
+      const result = await validatePromoCode(promoCode);
       const latency = performance.now() - start;
 
-      if (error) {
-        throw error;
-      }
-
-      // We check for uses based on the generic `uses < max` structure if they exist, but if max_uses exists we use that.
-      // Often max is used. If we don't have max or max_uses, we skip limit.
-      const isUnderLimit = typeof promo.max_uses !== 'undefined' ? promo.uses < promo.max_uses : true;
-
-      if (promo && isUnderLimit) {
-        if (promo.discount_percentage === 100 && promo.is_internal_grant === true) {
-          setDiscount(100);
-          setPromoMessage('Internal grant code applied!');
-        } else {
-          setDiscount(promo.discount_percentage || 0);
-          setPromoMessage(`${promo.discount_percentage || 0}% discount applied!`);
-        }
-        trackAcademyEvent('PROMO_APPLIED', { code: promoCode, discount: promo.discount_percentage, latencyMs: latency });
+      if (result.status === 'valid') {
+        setDiscount(result.discount);
+        setAppliedPromo(result);
+        setPromoIsError(false);
+        setPromoMessage(
+          result.discount === 100 && result.isInternalGrant
+            ? 'Internal grant code applied: no payment required.'
+            : `${result.discount}% discount applied.`
+        );
+        trackAcademyEvent('PROMO_APPLIED', {
+          code: result.code,
+          discount: result.discount,
+          internalGrant: result.isInternalGrant,
+          latencyMs: latency,
+        });
       } else {
         setDiscount(0);
-        setPromoMessage('Invalid or expired promo code.');
-        trackAcademyEvent('PROMO_REJECTED', { code: promoCode, latencyMs: latency });
+        setAppliedPromo(null);
+        setPromoIsError(true);
+        setPromoMessage(result.message);
+        trackAcademyEvent('PROMO_REJECTED', { code: promoCode, reason: result.status, latencyMs: latency });
       }
     } catch (err) {
       const latency = performance.now() - start;
       setDiscount(0);
-      setPromoMessage('Error validating promo code. Please try again later.');
+      setAppliedPromo(null);
+      setPromoIsError(true);
+      setPromoMessage('Could not validate that code right now. Please try again.');
       trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', { error: err.message, latencyMs: latency });
       useAcademyStore.getState().addNotification({
         title: 'Validation Error',
-        description: 'Failed to validate promo code. Please try again later.',
+        description: 'Promo validation is temporarily unavailable. Please try again later.',
         type: 'error',
         icon: 'XCircle'
       });
     } finally {
       setIsProcessingPromo(false);
     }
+  };
+
+  /** Turn a store error into the string the learner sees. */
+  const describeError = (err) => {
+    if (err instanceof EnrollmentPayloadError) {
+      if (err.code === 'BACKEND_NOT_CONFIGURED') return 'Commerce backend not configured';
+      if (err.code === 'AUTH_REQUIRED') return 'Sign-in required';
+      return err.message;
+    }
+    return 'Transaction Failed';
+  };
+
+  /** Shared enrollment call so every payment path carries the same attribution. */
+  const completeEnrollment = async (paymentMethod, { txHash = null, stripeIntent = null } = {}) => {
+    return enrollInCourse(course.id, {
+      paymentMethod,
+      txHash,
+      stripeIntent,
+      promoCode: appliedPromo?.code ?? null,
+      affiliateId: appliedPromo?.affiliateId ?? affiliateId ?? null,
+      walletAddress: address ?? null,
+    });
   };
 
   const isAlreadyEnrolled = enrollments.some(e => e.course_id === course.id);
@@ -135,39 +221,92 @@ export default function CheckoutModal({ course, onClose }) {
       
       // 3. Complete enrollment
       const mockHash = "0x" + Math.random().toString(16).slice(2);
-      enrollInCourse(course.id, 'crypto', mockHash);
+      await completeEnrollment('crypto', { txHash: mockHash });
       
       setTxStep('Access Granted!');
       await new Promise(r => setTimeout(r, 1000));
       onClose();
     } catch (err) {
-      // console.error(err);
       trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', { method: 'crypto', courseId: course.id, error: err.message || err });
-      setTxStep('Transaction Failed');
+      setTxStep(describeError(err));
     } finally {
       setIsProcessing(false);
     }
   };
 
+  /**
+   * Fiat path.
+   *
+   * The learner is enrolled only after the checkout session has been created.
+   * The previous order enrolled first and redirected second, which handed out
+   * course access whenever the redirect target was unavailable.
+   */
   const handleFiatPayment = async () => {
     if (isProcessing) return;
 
     setIsProcessing(true);
-    setTxStep('Redirecting to Stripe...');
-    // Real flow would redirect to /api/v1/checkout/initiate
-    await new Promise(r => setTimeout(r, 1500));
-    enrollInCourse(course.id, 'fiat');
-    window.location.href = '/api/v1/checkout/initiate'; // As requested
-    onClose();
+    setTxStep('Opening secure checkout...');
+
+    try {
+      const response = await fetch(API_ENDPOINTS.CHECKOUT_INITIATE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course_id: course.id,
+          promo_code: appliedPromo?.code ?? null,
+          affiliate_id: appliedPromo?.affiliateId ?? affiliateId ?? null,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Checkout session could not be created (HTTP ${response.status}).`);
+      }
+
+      const session = await response.json().catch(() => ({}));
+      const redirectUrl = session?.url || session?.checkout_url;
+      if (!redirectUrl) {
+        throw new Error('Checkout service returned no redirect URL.');
+      }
+
+      await completeEnrollment('fiat', { stripeIntent: session?.payment_intent_id ?? null });
+      setTxStep('Redirecting to payment...');
+      window.location.assign(redirectUrl);
+    } catch (err) {
+      trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', {
+        method: 'fiat',
+        courseId: course.id,
+        error: err.message || err,
+      });
+      setTxStep(describeError(err));
+      useAcademyStore.getState().addNotification({
+        title: 'Checkout Unavailable',
+        description: 'Card checkout could not be started, so nothing was charged and no access was granted.',
+        type: 'error',
+        icon: 'XCircle'
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleInternalGrant = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
     setTxStep('Authorizing Grant...');
-    await new Promise(r => setTimeout(r, 1000));
-    enrollInCourse(course.id, 'internal_grant');
-    onClose();
+    try {
+      await new Promise(r => setTimeout(r, 600));
+      await completeEnrollment('internal_grant');
+      onClose();
+    } catch (err) {
+      trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', {
+        method: 'internal_grant',
+        courseId: course.id,
+        error: err.message || err,
+      });
+      setTxStep(describeError(err));
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   if (isAlreadyEnrolled) {
@@ -221,6 +360,13 @@ export default function CheckoutModal({ course, onClose }) {
                 </div>
               </div>
 
+              {affiliateId && (
+                <div className="flex items-center space-x-2 text-[10px] font-bold uppercase tracking-widest text-emerald-400/80">
+                  <SafeIcon name="Users" className="h-3 w-3" />
+                  <span>Referred by {affiliateId}</span>
+                </div>
+              )}
+
 
               {/* Promo Code Input */}
               <div className="mt-4">
@@ -245,7 +391,7 @@ export default function CheckoutModal({ course, onClose }) {
                   </button>
                 </div>
                 {promoMessage && (
-                  <p className={`text-xs mt-2 ${promoMessage.includes('Invalid') ? 'text-red-400' : 'text-emerald-400'}`}>
+                  <p className={`text-xs mt-2 ${promoIsError ? 'text-red-400' : 'text-emerald-400'}`}>
                     {promoMessage}
                   </p>
                 )}

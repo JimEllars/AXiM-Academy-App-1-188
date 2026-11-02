@@ -1,30 +1,24 @@
 import React, { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAcademyStore } from '../../store/useAcademyStore';
 import SafeIcon from '../../common/SafeIcon';
 import { motion } from 'framer-motion';
 import SkeletonCard from './SkeletonCard';
 import { trackAcademyEvent } from '../../lib/utils';
+import { courseMatchesTrack, TRACK_FILTERS } from '../../lib/track';
 
 export default function CourseGrid() {
   const { courses, searchQuery, activeCategory, setActiveCategory, isLoading } = useAcademyStore();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const categoryParam = searchParams.get('category');
-
-  useEffect(() => {
-    if (categoryParam) {
-      setActiveCategory(categoryParam);
-    }
-  }, [categoryParam, setActiveCategory]);
-  const categories = ['All', 'Foundation', 'Creative Labs', 'Professional Edge', 'Hardware', 'AI', 'Protocol'];
+  // `Home` owns the ?category= / ?track= sync via useTrackParam; this component
+  // only reads the resulting filter.
+  const categories = TRACK_FILTERS;
 
   const filteredCourses = courses.filter(course => {
     if (course.is_approved !== true) return false;
     const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          course.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = activeCategory === 'All' || course.category?.toLowerCase() === activeCategory.toLowerCase();
-    return matchesSearch && matchesCategory;
+    return matchesSearch && courseMatchesTrack(course, activeCategory);
   });
 
   useEffect(() => {

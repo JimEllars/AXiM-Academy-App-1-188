@@ -3,48 +3,98 @@ import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
 import { useAcademyStore } from '../../store/useAcademyStore';
 import { trackAcademyEvent } from '../../lib/utils';
+import { supabase, supabaseConfigured } from '../../lib/supabase';
+import { ONYX_DOMAIN_CONTEXT, summonOnyx } from '../../lib/onyx';
 
-export default function OnyxAssistant({ courseTitle, lessonId }) {
+/**
+ * Onyx AI tutor panel.
+ *
+ * Talks to the edge summon endpoint with `domain_context: "academy"` and the
+ * learner's session token. The browser holds no internal key: the satellite-to-
+ * Core relay is signed at the edge, where the key lives. Failures are reported
+ * as failures — a fabricated answer that reads like a real one is worse than an
+ * outage nobody notices.
+ */
+export default function OnyxAssistant({ courseTitle, lessonId, lessonTitle = null }) {
   const { aiChatHistory, addAiMessage } = useAcademyStore();
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [onyxError, setOnyxError] = useState(null);
+  const [lastQuery, setLastQuery] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [aiChatHistory, isTyping]);
+  }, [aiChatHistory, isTyping, onyxError]);
+
+  const askOnyx = async (question, history) => {
+    const startedAt = Date.now();
+    setOnyxError(null);
+    setIsTyping(true);
+    setLastQuery(question);
+
+    addAiMessage({ role: 'user', content: question });
+    trackAcademyEvent('AI_ASSISTANT_QUERY_SUBMITTED', {
+      lessonId,
+      courseTitle,
+      domainContext: ONYX_DOMAIN_CONTEXT,
+    });
+
+    try {
+      let accessToken = null;
+      if (supabaseConfigured) {
+        const { data: { session } } = await supabase.auth.getSession();
+        accessToken = session?.access_token ?? null;
+      }
+      if (!accessToken) {
+        throw Object.assign(new Error('Sign in to talk to Onyx.'), { code: 'NO_SESSION', retryable: false });
+      }
+
+      const result = await summonOnyx({
+        message: question,
+        courseTitle,
+        lessonId,
+        lessonTitle,
+        history,
+        accessToken,
+      });
+
+      addAiMessage({ role: 'assistant', content: result.answer });
+      trackAcademyEvent('AI_ASSISTANT_RESPONSE_RESOLVED', {
+        lessonId,
+        status: 'success',
+        latencyMs: result.latencyMs,
+        requestId: result.requestId,
+      });
+    } catch (err) {
+      const code = err?.code ?? 'UNKNOWN';
+      setOnyxError({
+        code,
+        message: err?.message || 'Onyx is unreachable right now.',
+        retryable: err?.retryable !== false,
+      });
+      trackAcademyEvent('AI_ASSISTANT_RESPONSE_FAILED', {
+        lessonId,
+        status: 'error',
+        code,
+        latencyMs: Date.now() - startedAt,
+      });
+    } finally {
+      setIsTyping(false);
+    }
+  };
 
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    const question = input.trim();
+    if (!question || isTyping) return;
 
-    const userMsg = input;
-    addAiMessage({ role: 'user', content: userMsg });
+    // Capture the transcript before the new turn lands in the store.
+    const history = aiChatHistory;
     setInput('');
-    setIsTyping(true);
-
-    const start = Date.now();
-    trackAcademyEvent('AI_ASSISTANT_QUERY_SUBMITTED', { lessonId });
-
-    // Dynamic Mock Responses based on keywords
-    setTimeout(() => {
-      let response = `As an Onyx AI Architect, I've analyzed your query regarding "${courseTitle}". Based on the system schematics, the primary bottleneck you're describing is typical of Layer-2 congestion. I recommend reviewing the "Edge Network Overview" module for specific relay optimization parameters.`;
-      
-      if (userMsg.toLowerCase().includes('help')) {
-        response = "I am standing by. To optimize your learning trajectory, specify the module or hardware component you are struggling with. I can provide real-time schematic explanations.";
-      } else if (userMsg.toLowerCase().includes('sbt') || userMsg.toLowerCase().includes('certificate')) {
-        response = "SBTs (Soulbound Tokens) are minted upon 100% curriculum completion. Once the ledger confirms your final quiz score, the minting protocol will initialize on the Arbitrum network.";
-      }
-
-      addAiMessage({ role: 'assistant', content: response });
-      setIsTyping(false);
-
-      const latencyMs = Date.now() - start;
-      const mockSignature = `mock-sig-${Date.now()}`;
-      trackAcademyEvent('AI_ASSISTANT_RESPONSE_RESOLVED', { lessonId, status: 'success', latencyMs, mockSignature });
-    }, 1500);
+    await askOnyx(question, history);
   };
 
   return (
@@ -57,8 +107,10 @@ export default function OnyxAssistant({ courseTitle, lessonId }) {
           <span className="text-xs font-black uppercase tracking-widest text-white">Onyx AI Tutor</span>
         </div>
         <div className="flex items-center space-x-1">
-          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-          <span className="text-[10px] font-bold text-gray-500 uppercase">Synchronized</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${onyxError ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+          <span className="text-[10px] font-bold text-gray-500 uppercase">
+            {onyxError ? 'Degraded' : 'Synchronized'}
+          </span>
         </div>
       </div>
 
@@ -91,6 +143,32 @@ export default function OnyxAssistant({ courseTitle, lessonId }) {
             </div>
           </motion.div>
         ))}
+
+        <AnimatePresence>
+          {onyxError && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="flex justify-start"
+            >
+              <div className="max-w-[90%] p-4 rounded-2xl rounded-tl-none text-xs font-medium leading-relaxed bg-red-500/10 border border-red-500/30 text-red-300">
+                <p className="font-bold uppercase tracking-widest text-[10px] mb-1">
+                  Onyx uplink failed ({onyxError.code})
+                </p>
+                <p>{onyxError.message}</p>
+                {onyxError.retryable && lastQuery && (
+                  <button
+                    onClick={() => askOnyx(lastQuery, aiChatHistory)}
+                    className="mt-3 text-[10px] font-black uppercase tracking-widest text-red-200 underline"
+                  >
+                    Retry
+                  </button>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         
         {isTyping && (
           <div className="flex justify-start">
@@ -108,7 +186,7 @@ export default function OnyxAssistant({ courseTitle, lessonId }) {
       <div className="p-4 bg-gray-950/50 border-t border-gray-800">
         <form onSubmit={handleSend} className="relative">
           <input 
-            type="text" 
+            type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Query Onyx AI..." 

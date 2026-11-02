@@ -1,0 +1,51 @@
+name: CI
+
+# There was no CI on this repository. "Verify the status checks before merging"
+# had nothing to verify against, so a broken build could only be discovered by
+# whoever opened the app next. This runs the same three gates locally and
+# remotely: lint, unit tests, production build.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: lint + test + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Production build
+        # Thirdweb + ethers need the larger heap; the build script sets the same
+        # flag, this repeats it so the value is visible in the CI log.
+        run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
