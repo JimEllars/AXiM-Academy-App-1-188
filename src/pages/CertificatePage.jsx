@@ -14,9 +14,15 @@ export default function CertificatePage() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  // Ensure the user owns this enrollment
-  // Note: In real app, we check enrollment.user_id === user.id
-  
+  // A certificate is a credential, so only its holder may open it. RLS already
+  // limits which rows reach this browser; this stops a shared /certificate/<id>
+  // link from rendering another learner's certificate out of an already-loaded
+  // store.
+  const ownedByViewer = !enrollment.user_id || !user?.id || enrollment.user_id === user.id;
+  if (!ownedByViewer) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return (
     <div className="bg-gray-950 min-h-screen">
       <CertificateViewer 

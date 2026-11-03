@@ -8,6 +8,13 @@ import SafeIcon from '../../common/SafeIcon';
 import { API_ENDPOINTS, trackAcademyEvent } from '@/lib/utils';
 import { getAffiliateRef } from '@/lib/affiliate';
 import { EnrollmentPayloadError } from '@/lib/enrollmentPayload';
+import {
+  buildCryptoPaymentPlan,
+  describeWalletError,
+  effectiveEthAmount,
+  extractTransactionHash,
+  getTreasuryAddress,
+} from '@/lib/cryptoPayment';
 
 /**
  * Validate a promo code server-side.
@@ -73,6 +80,9 @@ export default function CheckoutModal({ course, onClose }) {
   const [method, setMethod] = useState(null); // 'fiat' or 'crypto'
   const [isProcessing, setIsProcessing] = useState(false);
   const [txStep, setTxStep] = useState('');
+  // `txStep` is only rendered while the button is spinning, so a refusal or a
+  // failure has to land somewhere that outlives `isProcessing`.
+  const [paymentError, setPaymentError] = useState('');
 
   const [promoCode, setPromoCode] = useState('');
   const [isProcessingPromo, setIsProcessingPromo] = useState(false);
@@ -203,32 +213,69 @@ export default function CheckoutModal({ course, onClose }) {
 
   const isAlreadyEnrolled = enrollments.some(e => e.course_id === course.id);
 
+  /**
+   * Crypto path.
+   *
+   * The transfer is real: `sdk.wallet.transfer` sends ETH from the learner's
+   * wallet to the configured treasury on Arbitrum One, and the hash written to
+   * `academy_enrollments.tx_hash` is the one the chain returned. This replaced a
+   * `setTimeout` trio plus `'0x' + Math.random()`, which unlocked the course for
+   * free and stored a receipt that never existed.
+   */
   const handleCryptoPayment = async () => {
-    if (!address) return;
     if (isProcessing) return;
-    
+    setPaymentError('');
+
+    const plan = buildCryptoPaymentPlan({
+      priceCrypto: course.price_crypto,
+      discountPercentage: discount,
+      treasuryAddress: getTreasuryAddress(),
+      walletAddress: address,
+      chainId: sdk?.getChainId?.() ?? null,
+    });
+
+    if (plan.status !== 'ready') {
+      setPaymentError(plan.message);
+      trackAcademyEvent('CHECKOUT_CRYPTO_BLOCKED', { courseId: course.id, reason: plan.code });
+      return;
+    }
+
+    if (!sdk?.wallet?.transfer) {
+      setPaymentError('This wallet cannot send transactions from here. Connect a signer wallet on Arbitrum One and retry.');
+      trackAcademyEvent('CHECKOUT_CRYPTO_BLOCKED', { courseId: course.id, reason: 'NO_SIGNER' });
+      return;
+    }
+
     setIsProcessing(true);
-    setTxStep('Initializing Secure Ledger...');
-    
+    setTxStep(`Confirm ${plan.amountEth} ETH in your wallet...`);
+    trackAcademyEvent('CHECKOUT_CRYPTO_TRANSFER_REQUESTED', {
+      courseId: course.id,
+      amountEth: plan.amountEth,
+      treasuryAddress: plan.treasuryAddress,
+      chainId: plan.chainId,
+    });
+
     try {
-      // 1. Simulate finding the contract
-      await new Promise(r => setTimeout(r, 1000));
-      setTxStep(`Requesting ${course.price_crypto} ETH...`);
-      
-      // 2. Simulate wallet sign request
-      await new Promise(r => setTimeout(r, 2000));
-      setTxStep('Confirming Block Inclusion...');
-      
-      // 3. Complete enrollment
-      const mockHash = "0x" + Math.random().toString(16).slice(2);
-      await completeEnrollment('crypto', { txHash: mockHash });
-      
+      const result = await sdk.wallet.transfer(plan.treasuryAddress, plan.amountEth);
+      const txHash = extractTransactionHash(result);
+
+      if (!txHash) {
+        // Do not enroll on an unrecordable payment, and do not claim it did not
+        // happen: the transfer may well be mined. Say exactly that.
+        throw new Error(
+          'The transfer was submitted but the wallet returned no transaction hash, so it cannot be recorded against your enrollment. Keep your wallet receipt and contact support before retrying.',
+        );
+      }
+
+      setTxStep('Payment confirmed. Recording enrollment...');
+      await completeEnrollment('crypto', { txHash });
+
       setTxStep('Access Granted!');
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 600));
       onClose();
     } catch (err) {
       trackAcademyEvent('CHECKOUT_TRANSACTION_FAILED', { method: 'crypto', courseId: course.id, error: err.message || err });
-      setTxStep(describeError(err));
+      setPaymentError(err instanceof EnrollmentPayloadError ? describeError(err) : describeWalletError(err));
     } finally {
       setIsProcessing(false);
     }
@@ -243,6 +290,7 @@ export default function CheckoutModal({ course, onClose }) {
    */
   const handleFiatPayment = async () => {
     if (isProcessing) return;
+    setPaymentError('');
 
     setIsProcessing(true);
     setTxStep('Opening secure checkout...');
@@ -277,7 +325,7 @@ export default function CheckoutModal({ course, onClose }) {
         courseId: course.id,
         error: err.message || err,
       });
-      setTxStep(describeError(err));
+      setPaymentError(describeError(err));
       useAcademyStore.getState().addNotification({
         title: 'Checkout Unavailable',
         description: 'Card checkout could not be started, so nothing was charged and no access was granted.',
@@ -292,6 +340,7 @@ export default function CheckoutModal({ course, onClose }) {
   const handleInternalGrant = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
+    setPaymentError('');
     setTxStep('Authorizing Grant...');
     try {
       await new Promise(r => setTimeout(r, 600));
@@ -303,7 +352,7 @@ export default function CheckoutModal({ course, onClose }) {
         courseId: course.id,
         error: err.message || err,
       });
-      setTxStep(describeError(err));
+      setPaymentError(describeError(err));
     } finally {
       setIsProcessing(false);
     }
@@ -434,7 +483,9 @@ export default function CheckoutModal({ course, onClose }) {
                     {discount > 0 ? (
                       <>
                         <span className="line-through text-gray-500 text-sm mr-2">{course.price_crypto}</span>
-                        <span>{(course.price_crypto * (1 - discount/100)).toFixed(4)}</span>
+                        {/* Same helper the transfer uses, so the quoted price and
+                            the signed amount cannot drift apart. */}
+                        <span>{effectiveEthAmount(course.price_crypto, discount)}</span>
                       </>
                     ) : (
                       <span>{course.price_crypto}</span>
@@ -490,6 +541,12 @@ export default function CheckoutModal({ course, onClose }) {
                     </>
                   )}
                 </button>
+              )}
+
+              {paymentError && (
+                <p role="alert" className="text-xs text-red-400 leading-relaxed">
+                  {paymentError}
+                </p>
               )}
             </div>
 

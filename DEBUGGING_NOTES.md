@@ -123,3 +123,65 @@ route and rendered nothing. Three call sites did this
 `CourseGrid` applied `?category=` when the param was present and never cleared
 it, so the filter survived navigation. `useTrackParam()` now sets the filter from
 the URL on every mount, including back to `All` when there is no param.
+
+---
+
+## "Crypto checkout works!" — no money moved (2026-11-03)
+
+**Symptom.** Paying with crypto completes in about three seconds, the learner is
+enrolled, and `academy_enrollments.tx_hash` holds something that looks like a
+transaction hash. On Arbiscan there is no such transaction.
+
+**What it was.** `handleCryptoPayment` was three `setTimeout`s in a trench coat:
+
+```js
+await new Promise(r => setTimeout(r, 1000)); // "finding the contract"
+await new Promise(r => setTimeout(r, 2000)); // "wallet sign request"
+const mockHash = '0x' + Math.random().toString(16).slice(2);
+await completeEnrollment('crypto', { txHash: mockHash });
+```
+
+No contract, no wallet prompt, no chain. `tx_hash` is the payment proof for an
+on-chain enrollment, so every crypto purchase wrote a receipt that never
+existed — and the course unlocked for free. This is the same class of defect as
+the `setTimeout(3000)` SBT mint fixed in Wave 2 (see above); the mint was fixed
+and its sibling on the checkout path was missed.
+
+**Fix.** `src/lib/cryptoPayment.js` decides whether a transfer is legal
+(treasury configured, wallet connected, chain is 42161 — Arbitrum One,
+amount after discount > 0), then `CheckoutModal` calls
+`sdk.wallet.transfer(treasury, amount)` and stores only a hash the wallet
+returned. `extractTransactionHash()` rejects anything that is not 32 bytes, so
+the old simulated value could not be written even by accident.
+
+**How to spot it again.** Any `Math.random()` or bare `setTimeout` on a path
+that writes `tx_hash`, `stripe_payment_intent`, `sbt_mint_status` or
+`certificate_hash`. Those four columns are claims about the outside world; a
+timer can only produce a lie.
+
+---
+
+## "The build is OOM-killed after `rendering chunks`" (2026-11-03)
+
+**Symptom.** `NODE_OPTIONS=--max-old-space-size=4096 npm run build` runs for
+15–25 minutes, prints `✓ 5296 modules transformed.` and `rendering chunks...`,
+then the process disappears. The log ends with `Killed`.
+
+**What it was.** Not the code and not a leak: the sandbox has 3.9 GB of RAM and
+no swap, and V8 was told it may use 4 GB. `dmesg` shows the kernel taking the
+process at `anon-rss` 2.7–2.9 GB while the agent runtime and a parallel repo's
+`npm ci` held the rest. Lowering the cap to 2560 MB moved the kill later but did
+not remove it — the build's live set at render is ~2.7 GB. Transform throughput
+was ~5 % of one core throughout, so the box was CPU-starved as well; the same
+bundle builds in ~32 s on an idle machine (see the Wave 2 entry).
+
+**What to do.** Do not chase this in `vite.config.js`. Check `free -m` and
+`ps aux | grep vite` first: if another build is resident, wait for it. The
+authoritative production build is the CI job (`ubuntu-latest`, 7 GB, the same
+`npm run build`). Locally, the per-module transform check
+(`npx vite --port 5200` then GET each changed module) catches syntax and
+resolution errors for a few hundred MB, which is what this box can afford.
+
+**Do not** "fix" it by dropping `--max-old-space-size` in `package.json`. CI
+needs the headroom, and a build that succeeds only because it skipped the
+minifier is not the build that ships.

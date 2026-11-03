@@ -6,6 +6,7 @@ import Leaderboard from '../components/discovery/Leaderboard';
 import SafeIcon from '../common/SafeIcon';
 import { useTrackParam } from '../hooks/useTrackParam';
 import { TRACKS, buildCatalogHref } from '../lib/track';
+import { getAffiliateRef } from '../lib/affiliate';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -67,7 +68,7 @@ export default function Home() {
                 {TRACKS.slice(0, 3).map((track) => (
                   <button
                     key={track}
-                    onClick={() => navigate(buildCatalogHref(track))}
+                    onClick={() => navigate(buildCatalogHref(track, { ref: getAffiliateRef() }))}
                     className={`w-full text-left px-4 py-3 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors border ${
                       activeTrack === track
                         ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'

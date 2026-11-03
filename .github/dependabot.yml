@@ -1,0 +1,26 @@
+# Dependabot update policy.
+#
+# Added 2026-11-03 after PR #29 (vite 5 -> 8) could not install at all:
+# `@vitejs/plugin-react@4.7.0` declares `peer vite@^4 || ^5 || ^6 || ^7`, so
+# `npm ci` fails with ERESOLVE and the lint/test/build job never starts. A major
+# Vite bump is a migration, not a dependency update: it needs the plugin (and
+# usually the JSX transform config) moved with it, one change, with a build run
+# behind it. Until that migration is scheduled, majors for vite are held back
+# rather than re-opened every week.
+#
+# Minor and patch updates stay on so security fixes keep arriving.
+version: 2
+updates:
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: 'vite'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'

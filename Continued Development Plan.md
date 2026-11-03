@@ -1,6 +1,6 @@
 # Continued Development Plan — AXiM Academy
 
-Last reconciled: 2026-11-02 (end of Wave 2).
+Last reconciled: 2026-11-03 (end of Wave 3).
 
 ## Where the platform actually is
 
@@ -24,6 +24,10 @@ Four things must be true before a learner can actually pay and earn a credential
    uuid to enroll with.
 4. **Deploy the SBT contract** on Arbitrum One and set
    `VITE_SBT_CONTRACT_ADDRESS`. Until it exists, minting correctly refuses.
+5. **Set `VITE_ACADEMY_TREASURY_ADDRESS`** to the Arbitrum One address that
+   should receive tuition. Crypto checkout is a real wallet transfer as of
+   Wave 3 and refuses while this is unset — the previous "working" crypto path
+   moved no funds at all.
 
 ## P1 — Close the commerce loop (code)
 
@@ -34,7 +38,10 @@ Four things must be true before a learner can actually pay and earn a credential
    the promo through `academy_validate_promo`, price the course, create the
    Stripe session, and only then insert the enrollment as service role.
 2. **Stripe webhook** → set `stripe_payment_intent`, `revenue_split_status`, and
-   release access on `checkout.session.completed`.
+   release access on `checkout.session.completed`. The fiat path still enrolls
+   the learner as soon as the Stripe session exists, which is one step earlier
+   than the money; the webhook is what makes "paid" and "enrolled" the same
+   event.
 3. **Revenue split settlement.** `academy_enrollments.affiliate_id` and
    `academy_promo_codes.linked_affiliate_id` now carry attribution; nothing pays
    out on them yet.
@@ -55,13 +62,24 @@ Four things must be true before a learner can actually pay and earn a credential
    knows the real score; pass it through `buildProgressPayload`.
 4. **Onyx history is not persisted** across reloads, and the assistant has no
    per-lesson context beyond the title.
+5. **Crypto purchases are not reconciled against the treasury.** Wave 3 stores
+   the transfer hash the wallet returned, but nothing verifies that the amount
+   arrived at the treasury, and nothing writes `revenue_split_status`. The
+   `credentials/mint` and `checkout/initiate` functions should own on-chain
+   verification the same way the Stripe webhook owns fiat.
 
 ## P3 — Catalogue & admin
 
-1. **Dependabot backlog**: 16 open PRs. The `vite` 5 → 8 and
-   `react-router-dom` 6 → 7 bumps are majors that need a build run each, not a
-   batch merge. Do them one at a time with `npm run lint && npm test && npm run
-   build` after each.
+1. **Dependabot backlog**: 17 open PRs. `vite` 5 → 8 (PR #29) cannot install at
+   all — `@vitejs/plugin-react@4.7.0` peers `vite@^4 || ^5 || ^6 || ^7` — so
+   `npm ci` fails before lint and the PR can never go green on its own. Wave 3
+   added `.github/dependabot.yml` to hold `vite` majors back; the migration
+   itself is a scheduled task (plugin + `vite.config.js` + a full build), not a
+   merge. `react-router-dom` 6 → 7 and the other majors still need one build
+   each: `npm run lint && npm test && npm run build` after every bump, never a
+   batch. Patch bumps (`follow-redirects` 1.16.2, `qs` 6.17.1,
+   `postcss-selector-parser` 6.1.5) are green on their PRs and can go in
+   whenever CI is quiet.
 2. **`academy_courses` has no `category` check** — the migration seeds tracks but
    nothing stops a new row landing in `Foundaton`. Add a CHECK or a lookup table.
 3. **Admin analytics read local state** (`earnings`, `partners`), not the
