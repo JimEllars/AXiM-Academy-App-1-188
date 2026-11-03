@@ -5,6 +5,7 @@ import { useAcademyStore } from '../store/useAcademyStore';
 import SafeIcon from '../common/SafeIcon';
 import CheckoutModal from '../components/transaction/CheckoutModal';
 import { buildCatalogHref, normalizeTrack } from '../lib/track';
+import { getAffiliateRef } from '../lib/affiliate';
 
 export default function CourseDetails() {
   const { id } = useParams();
@@ -42,7 +43,7 @@ export default function CourseDetails() {
               <div className="flex items-center space-x-3 mb-4">
                 {track ? (
                   <button
-                    onClick={() => navigate(buildCatalogHref(track))}
+                    onClick={() => navigate(buildCatalogHref(track, { ref: getAffiliateRef() }))}
                     className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold uppercase tracking-widest rounded-full hover:bg-emerald-500/20 transition-colors"
                   >
                     {track}

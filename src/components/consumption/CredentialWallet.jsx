@@ -14,6 +14,7 @@ import {
   getSbtContractAddress,
 } from '../../lib/sbt';
 import { hashEnrollment } from '../../lib/credentialHash';
+import { extractTransactionHash } from '../../lib/cryptoPayment';
 
 /**
  * Credential wallet — the Arbitrum One half of the dual-credentialing pipeline.
@@ -60,7 +61,9 @@ export default function CredentialWallet() {
       const tokenUri = buildCredentialUri({ origin: window.location.origin, hashHex: credentialHash });
 
       const receipt = await mintSbt({ args: [walletAddress, tokenUri] });
-      const txHash = receipt?.transactionHash ?? receipt?.receipt?.transactionHash ?? null;
+      // Shared with the crypto checkout: a thirdweb `TransactionResult` keeps the
+      // hash at `receipt.transactionHash`, and an invalid hash is not a receipt.
+      const txHash = extractTransactionHash(receipt);
 
       // The ledger is the system of record for sbt_mint_status, so ask the
       // credential service to confirm the block before we say "minted".

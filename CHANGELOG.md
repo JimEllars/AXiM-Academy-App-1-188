@@ -3,6 +3,48 @@
 All notable changes to AXiM Academy. Newest first.
 Format: `## [wave] - YYYY-MM-DD`.
 
+## [Wave 3] - 2026-11-03
+
+Crypto checkout stops lying, the track filter moves into the URL, and a
+certificate is only readable by its holder.
+
+### Added
+
+- `src/lib/cryptoPayment.js` — pre-flight for a real Arbitrum One transfer:
+  treasury address from `VITE_ACADEMY_TREASURY_ADDRESS`, chain check, amount
+  after discount truncated to micro-ETH, and a `tx_hash` extractor that accepts
+  only a 32-byte hash. `describeWalletError()` turns provider noise into one
+  sentence.
+- `tests/cryptoPayment.test.js` — 12 tests, including one that feeds the old
+  simulated hash into the extractor and asserts it is rejected.
+- `.github/dependabot.yml` — `vite` majors held back with the peer-dependency
+  reason written down; minor and patch updates still flow.
+
+### Fixed
+
+- **Crypto checkout never took a payment.** It awaited three timers, generated
+  `'0x' + Math.random().toString(16).slice(2)`, wrote that into
+  `academy_enrollments.tx_hash` and enrolled the learner. Free access with a
+  fabricated on-chain receipt. The path is now a real
+  `sdk.wallet.transfer()` to the treasury on Arbitrum One; a missing treasury,
+  wrong chain, missing wallet or invalid hash refuses with the reason on screen.
+- The ETH price quoted on the crypto button was computed inline and could
+  disagree with the amount actually paid. Both now use `effectiveEthAmount()`.
+- Track chips set the store filter without touching the URL: the filtered
+  catalog was not shareable and the filter vanished on the next mount. Chips now
+  navigate to `/?category=<slug>` and every catalog link keeps the captured
+  `?ref=`.
+- `CertificatePage` had no ownership check — a `/certificate/<id>` link rendered
+  whichever enrollment the store held. It now redirects unless the enrollment
+  belongs to the viewer.
+- `CertificateViewer` showed a random 3–5 s "Minting..." spinner before the
+  print button. Removed; the certificate renders immediately.
+
+### Operator action
+
+Set `VITE_ACADEMY_TREASURY_ADDRESS` (Arbitrum One) before enabling crypto
+checkout. Without it the button refuses, by design.
+
 ## [Wave 2] - 2026-11-02
 
 Track filtering, affiliate attribution, a credential pipeline that is real at

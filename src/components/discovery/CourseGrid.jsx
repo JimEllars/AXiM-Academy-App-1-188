@@ -5,14 +5,21 @@ import SafeIcon from '../../common/SafeIcon';
 import { motion } from 'framer-motion';
 import SkeletonCard from './SkeletonCard';
 import { trackAcademyEvent } from '../../lib/utils';
-import { courseMatchesTrack, TRACK_FILTERS } from '../../lib/track';
+import { courseMatchesTrack, TRACK_FILTERS, buildCatalogHref } from '../../lib/track';
+import { getAffiliateRef } from '../../lib/affiliate';
 
 export default function CourseGrid() {
-  const { courses, searchQuery, activeCategory, setActiveCategory, isLoading } = useAcademyStore();
+  const { courses, searchQuery, activeCategory, isLoading } = useAcademyStore();
   const navigate = useNavigate();
   // `Home` owns the ?category= / ?track= sync via useTrackParam; this component
-  // only reads the resulting filter.
+  // only reads the resulting filter and navigates. Writing the store directly
+  // from a chip made the filter unserveable: the URL stayed `/`, so the next
+  // mount cleared it and the link could not be shared.
   const categories = TRACK_FILTERS;
+
+  const selectTrack = (track) => {
+    navigate(buildCatalogHref(track, { ref: getAffiliateRef() }));
+  };
 
   const filteredCourses = courses.filter(course => {
     if (course.is_approved !== true) return false;
@@ -38,7 +45,8 @@ export default function CourseGrid() {
           {categories.map(cat => (
             <button
               key={cat}
-              onClick={() => setActiveCategory(cat)}
+              onClick={() => selectTrack(cat)}
+              aria-pressed={activeCategory === cat}
               className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
                 activeCategory === cat 
                   ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' 
