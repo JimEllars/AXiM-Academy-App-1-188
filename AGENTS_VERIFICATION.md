@@ -102,7 +102,33 @@ minified production build is the CI job below, which runs the same
 
 ### CI (authoritative)
 
-CI_RESULT_PLACEHOLDER
+`lint + test + build` — **success** on `edc2cdf`
+(<https://github.com/JimEllars/AXiM-Academy-App-1-188/pull/34>). Steps 4–7 all
+green: `Install dependencies`, `Lint`, `Unit tests`, `Production build`.
+`GitGuardian Security Checks` — success.
+
+Verbatim from the CI job log:
+
+```
+> node --test tests/*.test.js
+1..73
+# tests 73
+# suites 0
+# pass 73
+# fail 0
+# cancelled 0
+# skipped 0
+
+> npm run build
+vite v5.4.21 building for production...
+✓ 5296 modules transformed.
+dist/assets/index-BsNNl85M.js   4,871.86 kB │ gzip: 1,379.49 kB
+✓ built in 36.84s
+```
+
+This is the same `npm run build` the mandate names, on a runner with the memory
+to finish it. It passes on this branch, and it passed on `main` at `e923d72`
+before it.
 
 ### Files changed
 
