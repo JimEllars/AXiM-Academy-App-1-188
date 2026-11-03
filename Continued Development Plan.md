@@ -70,7 +70,7 @@ Four things must be true before a learner can actually pay and earn a credential
 
 ## P3 — Catalogue & admin
 
-1. **Dependabot backlog**: 17 open PRs. `vite` 5 → 8 (PR #29) cannot install at
+1. **Dependabot backlog**: 22 open PRs. `vite` 5 → 8 (PR #29) cannot install at
    all — `@vitejs/plugin-react@4.7.0` peers `vite@^4 || ^5 || ^6 || ^7` — so
    `npm ci` fails before lint and the PR can never go green on its own. Wave 3
    added `.github/dependabot.yml` to hold `vite` majors back; the migration
@@ -78,8 +78,18 @@ Four things must be true before a learner can actually pay and earn a credential
    merge. `react-router-dom` 6 → 7 and the other majors still need one build
    each: `npm run lint && npm test && npm run build` after every bump, never a
    batch. Patch bumps (`follow-redirects` 1.16.2, `qs` 6.17.1,
-   `postcss-selector-parser` 6.1.5) are green on their PRs and can go in
-   whenever CI is quiet.
+   `postcss-selector-parser` 6.1.5) were merged on 2026-11-03 with CI green on
+   `main` after each.
+   Note on the queue moving *up* from 17 to 22: adding `.github/dependabot.yml`
+   made Dependabot re-read every ecosystem, which surfaced nine majors it had
+   not proposed before (`react` 19, `react-dom` 19, `zustand` 5,
+   `framer-motion` 14, `tailwind-merge` 3, `eslint` 10,
+   `eslint-plugin-react-hooks`, `actions/checkout` 4 → 7,
+   `actions/setup-node` 4 → 7). They are left open on purpose: each is a
+   migration decision, and a PR that fails CI is a cheaper answer than a
+   paragraph in a plan. Merge order for the cheap ones: the two `actions/*`
+   bumps first (workflow-only), then the runtime majors one at a time, never as
+   a batch.
 2. **`academy_courses` has no `category` check** — the migration seeds tracks but
    nothing stops a new row landing in `Foundaton`. Add a CHECK or a lookup table.
 3. **Admin analytics read local state** (`earnings`, `partners`), not the
