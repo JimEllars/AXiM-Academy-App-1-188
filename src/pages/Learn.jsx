@@ -20,7 +20,7 @@ export default function Learn() {
       <InteractiveClassroom
       course={course} 
       enrollment={enrollment} 
-      onProgress={(lessonId) => updateProgress(enrollment.id, lessonId)} 
+      onProgress={(lessonId, quizScore) => updateProgress(enrollment.id, lessonId, { quizScore })} 
     />
     </ErrorBoundary>
   );

@@ -3,6 +3,79 @@
 All notable changes to AXiM Academy. Newest first.
 Format: `## [wave] - YYYY-MM-DD`.
 
+## [Wave 4] - 2026-11-04
+
+`quiz_score` becomes a measurement, and the enrollment ledger is read back from
+the database instead of being assumed.
+
+### Added
+
+- `src/lib/quizScore.js` — `scoreQuiz()` counts first-attempt correctness (the
+  quiz lets a learner retry until right, so "eventually correct" says nothing),
+  `normalizeQuizScore()` coerces whatever the UI hands over into a value the
+  `NUMERIC(5,2)` column accepts or `null`, and `recordFirstAttempt()` keeps the
+  first answer for a question without letting a retry overwrite it.
+- `src/lib/enrollmentState.js` — `mapEnrollmentRows()` turns
+  `academy_enrollments` + `academy_progress` rows into store records (always
+  with a `progress` array), `mergeEnrollments()` unions local and server state
+  with the server winning, `countCompletedLessons()` counts distinct lessons.
+- `src/lib/revenue.js` — `buildRevenueRecord()` returns `null` for an internal
+  grant, a course with no partner share, or a non-positive price, and otherwise
+  a rounded split marked `settled: false`.
+- `useAcademyStore().fetchEnrollments()` — reads the learner's ledger and
+  progress rows for the signed-in uuid and merges them in, additively. Wired
+  into `StudentDashboard`.
+- `tests/quizScore.test.js` (10 tests), `tests/enrollmentState.test.js`
+  (11 tests) and `tests/revenue.test.js` (8 tests).
+- `supabase/migrations/20261104000000_academy_course_category_check.sql` —
+  normalises drifted `academy_courses.category` values to the canonical six
+  tracks and adds a CHECK constraint plus a `(category, visibility)` index.
+
+### Fixed
+
+- **`quiz_score` was the constant 100.** `updateProgress` passed
+  `quizScore: 100` for every completed lesson, quiz or not; `Learn` dropped the
+  score `InteractiveClassroom` passed it; `QuizEngine` sent a literal `100`. The
+  column could not distinguish a failed quiz from a perfect one. The score is
+  now measured on first attempts, threaded through all three layers, and omitted
+  entirely for a lesson that has no quiz.
+- **A 100 % internal grant wrote a full-price partner earning.** Every
+  enrollment built an `earnings` row from `course.price_usd`, so the enrolment
+  path that exists so staff and contractors pay nothing added a completed sale
+  to `partners`, `getPartnerStats()` and the admin financial panel. `internal_grant
+  enrollments now record no revenue at all, and every row is marked
+  `settled: false` because nothing pays out yet.
+- **A click event could become a score.** Video, live and article lessons called
+  `handleComplete` straight off `onClick`, so the parameter was a
+  `SyntheticEvent`. Harmless only because the value was being discarded — with
+  the score wired through it would have written an object into `quiz_score`.
+- **The completion screen appeared before the write was confirmed.**
+  `handleComplete` did not await `onProgress`, so a rejected `academy_progress`
+  row still rendered "Certification Complete … logged on the AXiM Ledger". It
+  now awaits and shows the failure instead.
+- **Course completion could fire a lesson early.** The check compared
+  `newProgress.length` to the lesson count, so a lesson re-appended to the local
+  array counted twice. It now counts distinct lesson ids on both the client and
+  the progress bar.
+- Enrollments were never read back from the database, so the
+  `check_course_completion()` trigger wrote `status` / `completed_at` that
+  nothing displayed, and a learner on a second browser saw an empty Command
+  Center while their enrollment sat in the ledger.
+- `enrollment.progress` was dereferenced without a null guard in
+  `InteractiveClassroom` and in `updateProgress`; a record that arrived from the
+  database without the client-side array was a crash.
+- A quiz lesson with no `quizData` crashed on `questions[0].question_text`. It
+  now completes as an unscored lesson.
+- `OnyxAssistant` accepted a `lessonTitle` prop that was never passed, so the
+  tutor had no per-lesson context beyond the course title.
+- Merged the two workflow-only Dependabot PRs (#35 `actions/checkout` 4 → 7,
+  #36 `actions/setup-node` 4 → 7) after both CI runs passed. Queue: 22 → 20.
+
+### Note
+
+The category CHECK migration has **not** been executed against a database. See
+`AGENTS_VERIFICATION.md` for what that means for the claim.
+
 ## [Wave 3] - 2026-11-03
 
 Crypto checkout stops lying, the track filter moves into the URL, and a

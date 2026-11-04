@@ -10,23 +10,50 @@ import OnyxAssistant from './OnyxAssistant';
 import ResourceVault from './ResourceVault';
 import { useAcademyStore } from '../../store/useAcademyStore';
 import BadgeNotification from '../gamification/BadgeNotification';
+import { countCompletedLessons } from '../../lib/enrollmentState';
+import { normalizeQuizScore } from '../../lib/quizScore';
 
 function InteractiveClassroom({ course, enrollment, onProgress }) {
   const navigate = useNavigate();
   const [activeLessonId, setActiveLessonId] = useState(course.modules[0]?.lessons[0]?.id);
   const [showFeedback, setShowFeedback] = useState(false);
   const [newBadge, setNewBadge] = useState(null);
+  const [progressError, setProgressError] = useState('');
   const [activeTab, setActiveTab] = useState('lesson'); // 'lesson' | 'resources' | 'ai'
   
+  const completedLessons = countCompletedLessons(enrollment.progress);
+  const totalLessons = course.modules.flatMap(m => m.lessons).length;
+
   const getLessonStatus = (lessonId) => {
-    return enrollment.progress.some(p => p.lesson_id === lessonId && p.is_completed) ? 'completed' : 'pending';
+    return (enrollment.progress ?? []).some(p => p.lesson_id === lessonId && p.is_completed) ? 'completed' : 'pending';
   };
 
   const activeLesson = course.modules.flatMap(m => m.lessons).find(l => l.id === activeLessonId);
   const isLastLesson = course.modules.flatMap(m => m.lessons).at(-1)?.id === activeLessonId;
 
-  const handleComplete = (score) => {
-    onProgress(activeLessonId, score);
+  /**
+   * Record a lesson completion.
+   *
+   * `score` is only meaningful for a quiz — video, live and article lessons
+   * call this with a click event (`onClick={onComplete}`) or nothing at all, so
+   * anything that is not a number is treated as "no score" rather than being
+   * written to `academy_progress.quiz_score`.
+   *
+   * The write is awaited: the success screen used to render straight away, so a
+   * rejected progress row still told the learner their completion had been
+   * "logged on the AXiM Ledger".
+   */
+  const handleComplete = async (score) => {
+    setProgressError('');
+    const quizScore = normalizeQuizScore(score);
+    try {
+      await onProgress(activeLessonId, quizScore);
+    } catch (err) {
+      setProgressError(
+        err?.message || 'This lesson could not be recorded. Your progress has not been saved.',
+      );
+      return;
+    }
     if (isLastLesson) {
       setShowFeedback(true);
       if (course.badge) setNewBadge(course.badge);
@@ -48,7 +75,7 @@ function InteractiveClassroom({ course, enrollment, onProgress }) {
           <div className="mt-4 bg-gray-900 rounded-full h-1 border border-gray-800 overflow-hidden">
             <div 
               className="bg-emerald-500 h-full transition-all duration-700" 
-              style={{ width: `${(enrollment.progress.length / course.modules.flatMap(m => m.lessons).length) * 100}%` }} 
+              style={{ width: `${totalLessons ? (completedLessons / totalLessons) * 100 : 0}%` }} 
             />
           </div>
         </div>
@@ -125,6 +152,11 @@ function InteractiveClassroom({ course, enrollment, onProgress }) {
                   </div>
                 ) : (
                   <div className="max-w-5xl mx-auto">
+                    {progressError && (
+                      <p role="alert" className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-xs text-red-300">
+                        {progressError}
+                      </p>
+                    )}
                     {activeLesson?.type === 'video' ? (
                       <VideoPlayer url={activeLesson.videoUrl} title={activeLesson.title} onComplete={handleComplete} />
                     ) : activeLesson?.type === 'live' ? (
@@ -133,7 +165,7 @@ function InteractiveClassroom({ course, enrollment, onProgress }) {
                       <div className="max-w-3xl mx-auto space-y-8 prose prose-invert">
                         <h1 className="text-4xl font-black uppercase tracking-tight text-white">{activeLesson.title}</h1>
                         <div className="text-gray-400 text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: activeLesson.content }} />
-                        <button onClick={handleComplete} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-emerald-500 transition-all shadow-xl shadow-emerald-900/20">
+                        <button onClick={() => handleComplete()} className="w-full bg-emerald-600 text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-emerald-500 transition-all shadow-xl shadow-emerald-900/20">
                           Finalize Objective
                         </button>
                       </div>
@@ -155,7 +187,7 @@ function InteractiveClassroom({ course, enrollment, onProgress }) {
 
             {activeTab === 'ai' && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="h-full flex flex-col">
-                <OnyxAssistant courseTitle={course.title} lessonId={activeLessonId} />
+                <OnyxAssistant courseTitle={course.title} lessonId={activeLessonId} lessonTitle={activeLesson?.title ?? null} />
               </motion.div>
             )}
           </AnimatePresence>

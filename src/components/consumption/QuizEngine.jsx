@@ -3,13 +3,19 @@ import { useAcademyStore } from '@/store/useAcademyStore';
 import { motion, AnimatePresence } from 'framer-motion';
 import SafeIcon from '../../common/SafeIcon';
 import { trackAcademyEvent } from '@/lib/utils';
+import { recordFirstAttempt, scoreQuiz } from '@/lib/quizScore';
 
 function QuizEngine({ quizData, onComplete, lessonId }) {
+  const questions = Array.isArray(quizData) ? quizData : [];
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [showResult, setShowResult] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasFailed, setHasFailed] = useState(false);
+  // index -> was the first submitted answer correct. The quiz allows retries
+  // until the learner is right, so "eventually correct" is always true and
+  // says nothing; first-attempt correctness is what `quiz_score` records.
+  const [firstAttempts, setFirstAttempts] = useState({});
   const { saveQuizDraft, getQuizDraft } = useAcademyStore();
 
   useEffect(() => {
@@ -20,18 +26,19 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
         setSelectedAnswer(draft.selectedAnswer || null);
         setShowResult(draft.showResult || false);
         setHasFailed(draft.hasFailed || false);
+        setFirstAttempts(draft.firstAttempts || {});
       }
     }
   }, [lessonId]);
 
   useEffect(() => {
     if (lessonId) {
-      saveQuizDraft(lessonId, { currentIndex, selectedAnswer, showResult, hasFailed });
+      saveQuizDraft(lessonId, { currentIndex, selectedAnswer, showResult, hasFailed, firstAttempts });
     }
-  }, [lessonId, currentIndex, selectedAnswer, showResult, hasFailed]);
+  }, [lessonId, currentIndex, selectedAnswer, showResult, hasFailed, firstAttempts]);
 
   
-  const currentQuestion = quizData[currentIndex];
+  const currentQuestion = questions[currentIndex];
   
   const handleSelect = (key) => {
     if (showResult || isSubmitting) return;
@@ -40,7 +47,9 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
   
   const handleSubmit = () => {
     if (!selectedAnswer || isSubmitting) return;
-    if (selectedAnswer === currentQuestion.correct_answer) {
+    const isCorrect = selectedAnswer === currentQuestion.correct_answer;
+    setFirstAttempts((prev) => recordFirstAttempt(prev, currentIndex, isCorrect));
+    if (isCorrect) {
       setShowResult('correct');
     } else {
       setShowResult('incorrect');
@@ -52,14 +61,15 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
   const handleNext = async () => {
     if (isSubmitting) return;
     if (showResult === 'correct') {
-      if (currentIndex < quizData.length - 1) {
+      if (currentIndex < questions.length - 1) {
         setCurrentIndex(c => c + 1);
         setSelectedAnswer(null);
         setShowResult(false);
       } else {
         setIsSubmitting(true);
-        trackAcademyEvent('QUIZ_COMPLETED', { score: 100, hasFailed });
-        await onComplete(100);
+        const { score, total, correctFirstTry } = scoreQuiz(questions, firstAttempts);
+        trackAcademyEvent('QUIZ_COMPLETED', { score, total, correctFirstTry, hasFailed });
+        await onComplete(score);
         setIsSubmitting(false);
       }
     } else {
@@ -68,6 +78,26 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
       setShowResult(false);
     }
   };
+
+  // A "quiz" lesson with no questions cannot be scored or answered. Let the
+  // learner complete it as a reading lesson instead of crashing on
+  // `questions[0].question_text`.
+  if (questions.length === 0) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-3xl mx-auto shadow-xl text-center">
+        <SafeIcon name="Info" className="h-8 w-8 text-blue-400 mx-auto mb-4" />
+        <p className="text-sm text-gray-400 mb-6">
+          This knowledge check has no questions yet, so there is no score to record.
+        </p>
+        <button
+          onClick={() => onComplete()}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+        >
+          Mark Lesson Complete
+        </button>
+      </div>
+    );
+  }
   
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-3xl mx-auto shadow-xl">
@@ -77,7 +107,7 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
           <span>Onyx AI Knowledge Check</span>
         </h3>
         <span className="text-sm font-medium text-gray-400 bg-gray-950 px-3 py-1 rounded-full border border-gray-800">
-          Question {currentIndex + 1} of {quizData.length}
+          Question {currentIndex + 1} of {questions.length}
         </span>
       </div>
       <div className="mb-8">
@@ -131,7 +161,7 @@ function QuizEngine({ quizData, onComplete, lessonId }) {
           </button>
         ) : (
           <button onClick={handleNext} disabled={isSubmitting} className="bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-white px-6 py-3 rounded-lg border border-gray-700 font-medium transition-colors">
-            {isSubmitting ? 'Processing...' : (showResult === 'correct' && currentIndex === quizData.length - 1 ? 'Complete Module' : 'Continue')}
+            {isSubmitting ? 'Processing...' : (showResult === 'correct' && currentIndex === questions.length - 1 ? 'Complete Module' : 'Continue')}
           </button>
         )}
       </div>

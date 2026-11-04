@@ -84,7 +84,7 @@ export default function LiveStreamRoom({ lesson, onComplete }) {
             <p className="text-emerald-500 text-xs font-bold mt-1">Instructor: {lesson.instructor}</p>
           </div>
           <button 
-            onClick={onComplete}
+            onClick={() => onComplete()}
             className="bg-gray-800 hover:bg-gray-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition-all border border-gray-700"
           >
             Leave Session

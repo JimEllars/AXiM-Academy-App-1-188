@@ -13,11 +13,24 @@ import ExperienceToast from '../components/gamification/ExperienceToast';
 import SafeIcon from '../common/SafeIcon';
 
 export default function StudentDashboard() {
-  const { user, walletAddress, enrollments, courses, unlockedBadges, level, xp, streak, dailyQuests } = useAcademyStore();
+  const { user, walletAddress, enrollments, courses, unlockedBadges, level, xp, streak, dailyQuests, fetchEnrollments } = useAcademyStore();
   
   useEffect(() => {
     trackAcademyEvent('DASHBOARD_VIEWED', { userId: user?.id });
   }, [user?.id]);
+
+  // The database is the ledger; this store is a cache of it. Pull the rows the
+  // triggers have been writing so a learner returning on another browser sees
+  // their enrollments and progress instead of an empty Command Center.
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.resolve(fetchEnrollments?.()).then((result) => {
+      if (!cancelled && result && result.synced === false && result.reason === 'error') {
+        trackAcademyEvent('ENROLLMENT_LEDGER_FETCH_FAILED', { reason: result.error });
+      }
+    });
+    return () => { cancelled = true; };
+  }, [fetchEnrollments, user?.id]);
 
   if (!user && !walletAddress) {
     return <Navigate to="/" replace />;
