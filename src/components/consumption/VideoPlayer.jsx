@@ -20,7 +20,7 @@ export default function VideoPlayer({ url, title, onComplete }) {
           <p className="text-gray-400 text-sm mt-1">AXiM Authorized Educational Material</p>
         </div>
         <button 
-          onClick={onComplete}
+          onClick={() => onComplete()}
           className="bg-emerald-600 hover:bg-emerald-500 text-white px-8 py-3 rounded-xl font-bold transition-all flex items-center justify-center space-x-2 shadow-lg shadow-emerald-900/20"
         >
           <span>Complete Video</span>

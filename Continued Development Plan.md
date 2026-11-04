@@ -1,6 +1,6 @@
 # Continued Development Plan — AXiM Academy
 
-Last reconciled: 2026-11-03 (end of Wave 3).
+Last reconciled: 2026-11-04 (end of Wave 4).
 
 ## Where the platform actually is
 
@@ -52,48 +52,73 @@ Four things must be true before a learner can actually pay and earn a credential
 
 ## P2 — LMS behaviour
 
-1. **Progress is optimistic.** `updateProgress` marks the lesson complete in the
-   store even when the network call fails (the row is skipped, the UI is not).
-   Needs a queue with retry, or a rollback on failure.
-2. **Completion is computed client-side** from a lesson count match; the
-   `check_course_completion` trigger does the same server-side. Two sources of
-   truth for "completed". Pick the trigger and make the client read it.
-3. **Quiz scoring writes `quiz_score: 100` unconditionally.** The `QuizEngine`
-   knows the real score; pass it through `buildProgressPayload`.
-4. **Onyx history is not persisted** across reloads, and the assistant has no
-   per-lesson context beyond the title.
-5. **Crypto purchases are not reconciled against the treasury.** Wave 3 stores
-   the transfer hash the wallet returned, but nothing verifies that the amount
-   arrived at the treasury, and nothing writes `revenue_split_status`. The
-   `credentials/mint` and `checkout/initiate` functions should own on-chain
-   verification the same way the Stripe webhook owns fiat.
+1. ~~**Progress is optimistic.**~~ **Done in Wave 4**, then re-read: with Supabase
+   configured, `updateProgress` already threw on a rejected upsert and the store
+   never took the write. What was actually wrong sat one layer up —
+   `InteractiveClassroom.handleComplete` did not await it, so the "Certification
+   Complete … logged on the AXiM Ledger" screen rendered regardless. Fixed: the
+   call is awaited and the failure is shown. The unconfigured-demo branch still
+   marks lessons complete locally; that is the demo, and it is now a deliberate
+   one rather than an accident.
+2. **Completion had two sources of truth.** Half done in Wave 4.
+   `countCompletedLessons()` replaced the `.length` comparison on the client, and
+   `fetchEnrollments()` now reads `academy_enrollments` + `academy_progress` back
+   from the database on dashboard mount, with the server winning in
+   `mergeEnrollments()`. What is left: the client still derives `status:
+   'completed'` locally for immediate UI. It should read the trigger's result
+   after the last upsert instead of guessing, either by selecting the row back or
+   by letting the next `fetchEnrollments()` reconciliation be the only writer of
+   `status`. Until then the optimistic value is correct, not authoritative.
+3. ~~**Quiz scoring writes `quiz_score: 100` unconditionally.**~~ **Done in Wave
+   4.** `scoreQuiz()` measures first-attempt correctness, the score is threaded
+   through `QuizEngine` → `InteractiveClassroom` → `Learn` → `updateProgress`,
+   and a lesson with no quiz now omits the column instead of asserting a perfect
+   score. **Still open:** the value is measured in the browser and written by the
+   browser. Moving the progress write behind an Edge Function is what makes it a
+   record rather than a claim (see P1.1 for the same argument about enrollment).
+4. **Onyx history and per-lesson context.** Context half done in Wave 4:
+   `lessonTitle` is now passed, so the tutor sees the lesson it is tutoring.
+   Remaining: the transcript lives in the persisted zustand store, which is
+   per-browser localStorage, not per-learner history — it does not follow a
+   learner to another device and is never sent to the edge for continuity.
+5. **Crypto purchases are not reconciled against the treasury.** Open. Wave 3
+   stores the hash the wallet returned; nothing verifies the amount arrived, and
+   nothing writes `revenue_split_status`. `credentials/mint` and
+   `checkout/initiate` should own on-chain verification the same way the Stripe
+   webhook owns fiat.
 
 ## P3 — Catalogue & admin
 
-1. **Dependabot backlog**: 22 open PRs. `vite` 5 → 8 (PR #29) cannot install at
-   all — `@vitejs/plugin-react@4.7.0` peers `vite@^4 || ^5 || ^6 || ^7` — so
-   `npm ci` fails before lint and the PR can never go green on its own. Wave 3
-   added `.github/dependabot.yml` to hold `vite` majors back; the migration
-   itself is a scheduled task (plugin + `vite.config.js` + a full build), not a
-   merge. `react-router-dom` 6 → 7 and the other majors still need one build
-   each: `npm run lint && npm test && npm run build` after every bump, never a
-   batch. Patch bumps (`follow-redirects` 1.16.2, `qs` 6.17.1,
-   `postcss-selector-parser` 6.1.5) were merged on 2026-11-03 with CI green on
-   `main` after each.
-   Note on the queue moving *up* from 17 to 22: adding `.github/dependabot.yml`
-   made Dependabot re-read every ecosystem, which surfaced nine majors it had
-   not proposed before (`react` 19, `react-dom` 19, `zustand` 5,
-   `framer-motion` 14, `tailwind-merge` 3, `eslint` 10,
-   `eslint-plugin-react-hooks`, `actions/checkout` 4 → 7,
-   `actions/setup-node` 4 → 7). They are left open on purpose: each is a
-   migration decision, and a PR that fails CI is a cheaper answer than a
-   paragraph in a plan. Merge order for the cheap ones: the two `actions/*`
-   bumps first (workflow-only), then the runtime majors one at a time, never as
-   a batch.
-2. **`academy_courses` has no `category` check** — the migration seeds tracks but
-   nothing stops a new row landing in `Foundaton`. Add a CHECK or a lookup table.
+1. **Dependabot backlog**: 20 open PRs (was 22). `vite` 5 → 8 (PR #29) cannot
+   install at all — `@vitejs/plugin-react@4.7.0` peers `vite@^4 || ^5 || ^6 ||
+   ^7` — so `npm ci` fails before lint and the PR can never go green on its own.
+   `.github/dependabot.yml` holds `vite` majors back; the migration itself is a
+   scheduled task (plugin + `vite.config.js` + a full build), not a merge.
+   **Merged 2026-11-04:** the two workflow-only bumps — `actions/checkout`
+   4 → 7 (PR #35) and `actions/setup-node` 4 → 7 (PR #36), both green before
+   merging, one at a time, which is the order this section prescribes.
+   Still open and each needing its own build, never a batch:
+   `react-router-dom` 7 (PR #16), `react`/`react-dom` 19 (PR #40 is
+   `react-dom` alone — it cannot be merged without `react` 19 in the same
+   change), `zustand` 5 (#39), `framer-motion` 14 (#38), `tailwind-merge` 3
+   (#37), `eslint` 10 (#42), `eslint-plugin-react-hooks` 7 (#43),
+   `autoprefixer` 10.6.2 (#41). The rest are patch bumps inside transitive
+   trees and can go in ones and twos.
+2. ~~**`academy_courses` has no `category` check**~~ **Addressed in Wave 4** by
+   `20261104000000_academy_course_category_check.sql` (normalise → CHECK →
+   index), **but not executed**. It is a written migration, not a verified one.
+   Run it on a preview branch; if a legacy row cannot be normalised the `ELSE
+   'Foundation'` branch will file it under Foundation, so read the affected rows
+   before the `UPDATE` runs on anything real.
 3. **Admin analytics read local state** (`earnings`, `partners`), not the
-   database. Fine for a demo, wrong for a P&L.
+   database. Fine for a demo, wrong for a P&L. **Half fixed in Wave 4:** the
+   local `earnings` row was computed from `course.price_usd` at enrollment time
+   whether or not money moved, so a 100 % internal grant wrote a full-price
+   partner earning. `buildRevenueRecord()` now records nothing for a grant and
+   marks every row `settled: false`. Still open: the panels read the local
+   store, and a crypto enrollment is valued at its USD list price rather than
+   the ETH that arrived. Do not report revenue from this before it reads the
+   ledger.
 
 ## Working agreement reminders
 

@@ -185,3 +185,114 @@ resolution errors for a few hundred MB, which is what this box can afford.
 **Do not** "fix" it by dropping `--max-old-space-size` in `package.json`. CI
 needs the headroom, and a build that succeeds only because it skipped the
 minifier is not the build that ships.
+
+---
+
+## "Every quiz scored 100, including the one that wasn't taken" (2026-11-04)
+
+**Symptom.** `academy_progress.quiz_score` was `100.00` on every row. A learner
+who missed a question, a learner who aced it, and a lesson with no quiz at all
+were indistinguishable.
+
+**What it was.** Not one bug, three, each hiding the next:
+
+```js
+// QuizEngine
+trackAcademyEvent('QUIZ_COMPLETED', { score: 100, hasFailed });
+await onComplete(100);                    // literal
+
+// InteractiveClassroom
+const handleComplete = (score) => { onProgress(activeLessonId, score); }
+// ...but VideoPlayer/LiveStreamRoom are wired `onClick={onComplete}`, so
+// `score` is a SyntheticEvent on those lessons.
+
+// Learn
+onProgress={(lessonId) => updateProgress(enrollment.id, lessonId)}  // dropped
+
+// store
+buildProgressPayload({ enrollmentId, lessonId, quizScore: 100 })   // constant
+```
+
+Each layer independently made the value meaningless, so fixing any one of them
+proved nothing. The event-object one is the one to watch: it was harmless
+*because* the value was being dropped, and would have become
+`quiz_score: [object Object]` the moment the plumbing was connected.
+
+**Fix.** `src/lib/quizScore.js` owns the measurement — first-attempt
+correctness, because the quiz retries until correct so "eventually right" is
+always true and carries no information. `normalizeQuizScore()` returns `null` for
+anything that is not a finite number, so a future `onClick={onComplete}` regresses
+to "no score" rather than a broken row. A lesson with no questions returns
+`{score: null}`, which is different from `0` and omits the column.
+
+**How to spot it again.** A column whose value is identical across every row is
+not being measured. Grep for the literal on the write path before trusting any
+metric derived from it.
+
+---
+
+## "Certification Complete" on a write that never landed (2026-11-04)
+
+**Symptom.** The learner finishes the last lesson, sees "Your performance has
+been logged on the AXiM Ledger", and the progress row is not in the database.
+
+**What it was.** `handleComplete` called `onProgress(...)` without awaiting it
+and then rendered the success screen unconditionally. `updateProgress` did throw
+on a rejected upsert — the throw went into an unhandled promise rejection that
+nothing displayed.
+
+**Fix.** `handleComplete` is async and awaits; a failure renders in a
+`role="alert"` block above the lesson and the success screen does not appear.
+This is the same class as the Wave 3 `txStep` bug: feedback about an async write
+was rendered on a path that did not depend on the write.
+
+**A note on `Progress Sync Failed`.** `updateProgress` reports that string in a
+toast for every failure, including RLS denials and type errors. It is as
+uninformative as `Transaction Failed` was before Wave 2. Read `error.code`
+(`42501` RLS, `22P02` uuid, `PGRST204` column) before believing the message.
+
+---
+
+## The enrollment ledger was write-only (2026-11-04)
+
+**Symptom.** A learner enrolls, completes a course, signs in on another browser:
+empty Command Center, no enrollments, no progress. On the original browser the
+course shows complete — because that browser remembered it.
+
+**What it was.** Enrollments lived only in the zustand `persist` store
+(localStorage). `academy_progress` rows were written, and the
+`check_course_completion()` trigger wrote `academy_enrollments.status` and
+`completed_at`, and nothing ever selected them back. So the authoritative record
+existed and was never read, which is why the client's own derivation of
+"completed" could drift from the trigger's without anyone noticing.
+
+**Fix.** `fetchEnrollments()` on the store, called from `StudentDashboard`, reads
+the signed-in uuid's enrollments and their progress rows and merges them with
+`mergeEnrollments()` — server wins for rows it knows, local-only rows are kept,
+and an empty result never wipes the list. `mapEnrollmentRows()` guarantees
+`progress: []`, because `enrollment.progress.some(...)` on the first render was a
+white screen, not an empty list.
+
+**How to spot it again.** Any table with triggers or Edge Functions writing it
+and no `select` anywhere in `src/`. The write-only table is the one whose truth
+nobody is reading.
+
+---
+
+## Two agents cannot share `/tmp/build.log` (2026-11-04)
+
+**Symptom.** A `vite build` started with `nohup ... > /tmp/build.log`, then the
+log showed only `vite v5.4.21 building for production... transforming...` for
+ten minutes and then content from a *different repository*.
+
+**What it was.** The sandbox is shared. Another agent's workflow was running
+`npx vite build > /tmp/build.log` from `/workspace/review/coding-lab` on the same
+path. Both processes were alive; the log was a race. `ps aux | grep "[v]ite
+build"` showed four processes and two working directories, which is how it was
+identified.
+
+**What to do.** Give build logs a repo-scoped path (`/tmp/academy-build.log`) and
+check `ps aux` for a build from another directory before deciding the machine is
+slow. Two builds plus the agent runtime on 3.9 GB with no swap is an OOM the
+kernel resolves by killing whichever process touches the ceiling first — usually
+not the one that asked for it.

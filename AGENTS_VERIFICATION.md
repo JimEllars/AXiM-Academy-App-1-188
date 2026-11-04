@@ -3,6 +3,229 @@
 Append-only. Newest wave first. Each entry names the files touched, the change,
 and the command output that proves it.
 
+## 2026-11-04 — Wave 4: `quiz_score` measured, enrollment ledger read back
+
+Branch: `feat/academy-wave-4-quiz-score-and-ledger-sync`
+Base: `6004d7b` (`origin/main`, PR #44 "reconcile the Dependabot queue"), rebased
+onto `79b87e2` after the two `actions/*` merges below.
+
+### Starting state
+
+`git fetch origin main` + `git fetch --all --prune`: four commits in the previous
+24 hours, all upstream merges — `e0f91f1` (Wave 3, PR #34), `4cdec24`, `ce35b62`,
+`653269d` (Dependabot patch bumps), `6004d7b` (docs reconcile, PR #44). No human
+authored commits to rebase over; nothing local was abandoned or overwritten.
+21 open PRs at start, all Dependabot.
+
+Baseline before any change, on `main` at `6004d7b`:
+
+```
+> axim-academy@1.0.0 lint
+> eslint .
+(exit 0 — 0 errors, 0 warnings)
+
+> axim-academy@1.0.0 test
+> node --test tests/*.test.js
+1..73
+# tests 73
+# pass 73
+# fail 0
+```
+
+CI on `main` was green before the wave started (`gh run list --branch main`:
+run `41666753799`, `lint + test + build`, `success`, 1m11s).
+
+### Dependabot PRs merged first (workflow-only, both green)
+
+Following the merge order recorded in `Continued Development Plan.md` P3.1 —
+`actions/*` first, one at a time, never a batch:
+
+| PR | Change | `gh pr checks` before merge |
+|---|---|---|
+| #35 | `actions/checkout` 4 → 7 | GitGuardian `pass` 14s; `lint + test + build` `pass` 1m19s |
+| #36 | `actions/setup-node` 4 → 7 | GitGuardian `pass` 8s; `lint + test + build` `pass` 1m14s |
+
+Open Dependabot PRs: 22 → 20. Runtime majors (`react` 19, `react-dom` 19,
+`zustand` 5, `framer-motion` 14, `tailwind-merge` 3, `eslint` 10,
+`eslint-plugin-react-hooks` 7, `react-router-dom` 7) are still open on purpose:
+each is a migration that needs its own build, not a merge.
+
+### Defects found and fixed
+
+| # | Defect | File(s) | Fix |
+|---|---|---|---|
+| 1 | **`quiz_score` was the constant 100.** `updateProgress` passed `quizScore: 100` for every completed lesson. `Learn` dropped the score `InteractiveClassroom` handed it, and `QuizEngine` sent a literal `100`. A failed-then-retried quiz and a perfect one produced identical rows. | new `src/lib/quizScore.js`, `QuizEngine.jsx`, `InteractiveClassroom.jsx`, `Learn.jsx`, `useAcademyStore.js` | The score is first-attempt correctness across the questions, measured in `scoreQuiz()`; `Learn` forwards it; `updateProgress(enrollmentId, lessonId, { quizScore })` normalises it and omits the column when there is no quiz. |
+| 2 | **A `SyntheticEvent` could reach `quiz_score`.** Video/live/article lessons wired `onClick={onComplete}`, so `handleComplete`'s `score` parameter was the click event. Invisible while the value was discarded; a `[object Object]` row once it is not. | `VideoPlayer.jsx`, `LiveStreamRoom.jsx`, `InteractiveClassroom.jsx` | `onClick={() => onComplete()}` at both call sites; `normalizeQuizScore()` returns `null` for anything that is not a finite number, which is the guard that matters if a future call site regresses. |
+| 3 | **Completion was announced before the write succeeded.** `handleComplete` did not await `onProgress`, so a rejected `academy_progress` upsert still rendered "Certification Complete … logged on the AXiM Ledger". | `InteractiveClassroom.jsx` | `handleComplete` is async, awaits the write, and renders the failure in a `role="alert"` block instead of the success screen. |
+| 4 | **Completion could fire one lesson early.** `newProgress.length === totalLessons` counts a re-appended lesson twice. | `useAcademyStore.js`, `InteractiveClassroom.jsx` | `countCompletedLessons()` counts distinct `lesson_id`s; the sidebar progress bar uses the same helper instead of `progress.length`. |
+| 5 | **Enrollments were never read from the database.** `academy_progress` and the `check_course_completion()` trigger wrote the authoritative record and nothing loaded it: a learner on a second browser saw an empty Command Center, and `status` / `completed_at` had two sources of truth. | new `src/lib/enrollmentState.js`, `useAcademyStore.js` (`fetchEnrollments`), `StudentDashboard.jsx` | `fetchEnrollments()` reads the signed-in uuid's enrollments plus their progress rows and merges them additively — server wins for rows it knows, local-only rows are kept, an empty fetch never wipes the list. |
+| 6 | `enrollment.progress` was dereferenced with no null guard in `InteractiveClassroom` and inside `updateProgress`'s state updater. A record that arrived from the database without the client-side array was a crash. | `InteractiveClassroom.jsx`, `useAcademyStore.js` | `?? []` at both reads; `mapEnrollmentRows()` guarantees the array for anything it produces. |
+| 7 | A quiz lesson with no `quizData` crashed on `questions[0].question_text`. | `QuizEngine.jsx` | Empty-quiz branch completes the lesson as unscored. |
+| 8 | `OnyxAssistant` accepted `lessonTitle` and was never given it, so the tutor had no per-lesson context. | `InteractiveClassroom.jsx` | `lessonTitle={activeLesson?.title ?? null}` — the payload field already existed in `buildOnyxSummonPayload`. |
+| 10 | **A 100 % internal grant wrote a full-price partner earning.** `enrollInCourse` built the split from `course.price_usd` for every enrollment, so the free path that exists for staff and contractors added a completed sale to `partners`, `getPartnerStats()` and the admin financial panel — in the same wave the unified storefront uses those codes to bypass payment. | new `src/lib/revenue.js`, `useAcademyStore.js` | `buildRevenueRecord()` returns `null` for `internal_grant`, for a course with no partner share, and for a non-positive price; every emitted row is `settled: false` because no payout exists yet. |
+| 9 | `academy_courses.category` had no CHECK. A row could land in `'Foundaton'` and match no filter chip: invisible in every filtered view, present under "All". | new `supabase/migrations/20261104000000_academy_course_category_check.sql` | Normalise existing values to the six canonical tracks, `CHECK (category IN (...)) NOT VALID` → `VALIDATE`, plus a `(category, visibility)` index for the storefront filter. |
+
+### Tests
+
+Three new files, 29 tests, all over real modules with no mocks:
+
+`tests/quizScore.test.js` (10):
+
+- `scoreQuiz` measures first-attempt correctness (`{0:true,1:false,2:true}` on
+  three questions → 67), never the retry outcome;
+- **the regression**: an untouched quiz (`{}`, `null`, `undefined`) scores 0, not
+  100 — the value the old code asserted unconditionally;
+- a lesson with no questions returns `{score: null}` — distinct from a failed
+  quiz;
+- attempts on indices outside the quiz are ignored;
+- `normalizeQuizScore` rejects a DOM event, `NaN`, `Infinity`, `''`; rounds
+  `87.5` → `88`; clamps `-5` → `0` and `140` → `100`;
+- `buildProgressPayload` emits `quiz_score: 67` for a measured quiz and omits
+  the key entirely when there is none.
+
+`tests/enrollmentState.test.js` (11):
+
+- `mapEnrollmentRows` always yields `progress: []`, tolerates a null progress
+  list, attaches rows by `enrollment_id`, drops `is_completed: false`, and never
+  invents progress for an unknown enrollment;
+- the server row wins for `status` / `completed_at` in `mergeEnrollments`;
+- a local-only enrollment survives the merge, and an empty fetch cannot wipe the
+  local list;
+- `countCompletedLessons` counts distinct lesson ids and ignores incomplete rows.
+
+`tests/revenue.test.js` (8):
+
+- an internal grant produces **no** revenue record — the free internal path must
+  not appear as a sale;
+- a course with no instructor, or a zero/negative/non-numeric price, produces no
+  record (`null` means "no revenue", not "zero revenue");
+- 75 % of 299 → `224.25` / `74.75`; 33 % of 99 → `32.67` / `66.33` and the halves
+  round to the gross exactly;
+- a missing share falls back to the documented default; 150 and -10 clamp;
+- every row is `settled: false`, currency `USD`.
+
+**Prove-it-fails evidence.** Both files were written first and run against the
+missing modules:
+
+```
+$ npm test
+not ok 7 - tests/quizScore.test.js
+not ok 6 - tests/enrollmentState.test.js
+not ok 9 - tests/revenue.test.js
+# tests 84
+# pass 83
+# fail 1
+```
+
+After the modules landed:
+
+```
+$ npm test
+# tests 102
+# pass 102
+# fail 0
+```
+
+### Verification output (this sandbox)
+
+```
+> axim-academy@1.0.0 lint
+> eslint .
+(exit 0 — 0 errors, 0 warnings)
+
+> axim-academy@1.0.0 test
+> node --test tests/*.test.js
+1..102
+# tests 102
+# pass 102
+# fail 0
+# cancelled 0
+# skipped 0
+```
+
+### On the production build in this sandbox
+
+`npm run build` was started once, alone, and **did not reach chunk render** in
+this container. This is the environment documented in `DEBUGGING_NOTES.md` ("The
+build is OOM-killed after `rendering chunks`"), not this change.
+
+```
+$ free -m                      # at start, no other build resident
+Mem:            3919  total,   2861  available,  no swap
+$ NODE_OPTIONS=--max-old-space-size=4096 npx vite build > /tmp/academy-build.log
+vite v5.4.21 building for production...
+
+# ~15 minutes later, still transforming:
+$ tail -1 /tmp/academy-build.log
+[plugin:vite:resolve] Module "zlib" has been externalized ... micro-ftch/index.js
+$ free -m
+Mem:            3919  total,    439  available        # 3.5 GB resident
+```
+
+The transform was still running with 439 MB left, which is below the ~2.7 GB live
+set the bundle needs once it renders chunks. I stopped it there rather than let it
+run into the ceiling: the failure mode on this box is a kernel OOM kill, and the
+kernel takes whichever process touches 3.9 GB first — not necessarily this one.
+Another agent's build shares the container. (The log also stops at
+`Terminated`, my SIGTERM, with no `error during build` line — nothing here says
+the code failed to compile.)
+
+Three things were checked instead:
+
+1. **Lint and tests, which is what this change actually touches:**
+
+   ```
+   > axim-academy@1.0.0 lint
+   > eslint .
+   (exit 0 — 0 errors, 0 warnings)
+
+   > axim-academy@1.0.0 test
+   1..102
+   # tests 102
+   # pass 102
+   # fail 0
+   ```
+
+2. **Every changed module transforms and resolves.** A dev server on port 5210
+   served each changed file through the real esbuild + React pipeline, so syntax,
+   the `@/` alias and every import in the change were exercised:
+
+   ```
+   200  src/lib/quizScore.js                                 bytes=17143
+   200  src/lib/enrollmentState.js                           bytes=17004
+   200  src/components/consumption/QuizEngine.jsx            bytes=23361
+   200  src/components/consumption/InteractiveClassroom.jsx  bytes=31231
+   200  src/pages/Learn.jsx                                  bytes=3479
+   200  src/pages/StudentDashboard.jsx                       bytes=31862
+   200  src/components/consumption/VideoPlayer.jsx           bytes=4819
+   200  src/components/consumption/LiveStreamRoom.jsx        bytes=20315
+   200  src/store/useAcademyStore.js                         bytes=160795
+   ```
+
+3. **CI ran the real production build.** `ubuntu-latest`, the identical
+   `npm run lint && npm test && npm run build` — see the check on the pull request
+   below. That job is the authoritative build; a local one that succeeds only
+   because the machine happened to be quiet is not the build that ships. Same
+   call as Wave 3.
+
+### Not verified
+
+- **The migration in this wave has not been executed.** `supabase db push` needs
+  a real project; `.env` still holds placeholders. The SQL is written to be
+  idempotent and safe on drifted data (normalise → `NOT VALID` → `VALIDATE` →
+  index), but "a migration that has not been executed is not verified". Run it on
+  a preview branch before `main`.
+- **`fetchEnrollments()` has no integration test**, because the repo has no
+  test harness that can stand up PostgREST. The row-mapping and merge logic it
+  delegates to is covered by the 11 unit tests; the network call itself is
+  exercised only when a configured deployment loads the dashboard.
+- **`quiz_score` is still client-asserted.** The value is now measured rather
+  than constant, but it is measured in the browser and written by the browser.
+  The `academy_progress` RLS policy scopes writes to `auth.uid()`, which stops a
+  learner writing someone else's row, not a learner writing a flattering score to
+  their own. That needs the progress write to move behind an Edge Function, the
+  same way `checkout/initiate` should own enrollment. Recorded in the plan.
+
 ---
 
 ## 2026-11-03 — Wave 3: real crypto checkout, URL-owned track filter, credential access guard

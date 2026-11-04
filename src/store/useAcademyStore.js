@@ -10,6 +10,9 @@ import {
   isUuid,
   EnrollmentPayloadError
 } from '../lib/enrollmentPayload';
+import { countCompletedLessons, mapEnrollmentRows, mergeEnrollments } from '../lib/enrollmentState';
+import { normalizeQuizScore } from '../lib/quizScore';
+import { buildRevenueRecord } from '../lib/revenue';
 
 const MOCK_COURSES = [
   {
@@ -360,22 +363,65 @@ export const useAcademyStore = create(
           icon: 'Activity'
         });
 
-        let earningsRecord = null;
-        if (course?.instructor_id && Number.isFinite(Number(course.price_usd))) {
-          const gross = Number(course.price_usd);
-          const partnerShare = Number.isFinite(Number(course.revenue_share)) ? Number(course.revenue_share) : 75;
-          earningsRecord = {
-            id: `earn-${Date.now()}`,
-            course_id: courseId,
-            partner_id: course.instructor_id,
-            amount: gross * (partnerShare / 100),
-            platform_amount: gross * (1 - partnerShare / 100),
-            timestamp: new Date().toISOString()
-          };
+        // One row per real sale. An internal grant is not a sale, and the
+        // ledger says so by recording nothing rather than a full-price entry.
+        const earningsRecord = buildRevenueRecord({
+          course: course ?? { id: courseId },
+          paymentMethod: opts.paymentMethod || 'fiat',
+        });
+        if (earningsRecord) {
           set(state => ({ earnings: [...state.earnings, earningsRecord] }));
         }
 
         return newEnr;
+      },
+
+      /**
+       * Read the learner's enrollment ledger back from the database.
+       *
+       * Until now enrollments existed only in this persisted store, so
+       * `academy_progress` rows and the `check_course_completion()` trigger wrote
+       * the authoritative record and nothing read it: a learner on a second
+       * browser saw an empty Command Center, and `status` / `completed_at` had
+       * two sources of truth.
+       *
+       * Additive only. A row the database knows about replaces the local copy
+       * (the triggers and Edge Functions own those columns); an enrollment only
+       * the browser knows about is kept, because an upsert that has not
+       * replicated yet must not vanish from under the learner.
+       */
+      fetchEnrollments: async () => {
+        if (!supabaseConfigured) return { synced: false, reason: 'not_configured' };
+
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const userId = session?.user?.id;
+          if (!isUuid(userId)) return { synced: false, reason: 'no_session' };
+
+          const { data: rows, error } = await supabase
+            .from('academy_enrollments')
+            .select('*')
+            .eq('user_id', userId);
+
+          if (error) throw error;
+          if (!Array.isArray(rows) || rows.length === 0) {
+            return { synced: true, merged: 0, reason: 'no_rows' };
+          }
+
+          const { data: progressRows, error: progressError } = await supabase
+            .from('academy_progress')
+            .select('*')
+            .in('enrollment_id', rows.map((row) => row.id));
+
+          if (progressError) throw progressError;
+
+          const remote = mapEnrollmentRows(rows, progressRows);
+          set((state) => ({ enrollments: mergeEnrollments(state.enrollments, remote) }));
+          return { synced: true, merged: remote.length, reason: null };
+        } catch (err) {
+          trackAcademyEvent('ENROLLMENT_LEDGER_FETCH_FAILED', { error: err.message, code: err.code });
+          return { synced: false, reason: 'error', error: err.message };
+        }
       },
 
       /**
@@ -436,14 +482,19 @@ export const useAcademyStore = create(
         return true;
       },
 
-      updateProgress: async (enrollmentId, lessonId) => {
+      updateProgress: async (enrollmentId, lessonId, { quizScore = null } = {}) => {
         await get().ensureActiveSession();
+
+        // `quiz_score` is a measurement or nothing. It used to be the constant
+        // 100 on every lesson, so the column could not distinguish a failed
+        // quiz from a perfect one.
+        const measuredScore = normalizeQuizScore(quizScore);
 
         try {
           if (supabaseConfigured) {
             const { error } = await supabase
               .from('academy_progress')
-              .upsert(buildProgressPayload({ enrollmentId, lessonId, quizScore: 100 }), {
+              .upsert(buildProgressPayload({ enrollmentId, lessonId, quizScore: measuredScore }), {
                 onConflict: 'enrollment_id,lesson_id'
               });
 
@@ -453,13 +504,17 @@ export const useAcademyStore = create(
           set(state => ({
             enrollments: state.enrollments.map(e => {
               if (e.id !== enrollmentId) return e;
-              const alreadyCompleted = e.progress.some(p => p.lesson_id === lessonId);
+              const progress = e.progress ?? [];
+              const alreadyCompleted = progress.some(p => p.lesson_id === lessonId);
               if (alreadyCompleted) return e;
 
-              const newProgress = [...e.progress, { lesson_id: lessonId, is_completed: true, completed_at: new Date().toISOString() }];
+              const newProgress = [...progress, { lesson_id: lessonId, is_completed: true, quiz_score: measuredScore, completed_at: new Date().toISOString() }];
               const course = state.courses.find(c => c.id === e.course_id);
-              const totalLessons = course.modules.flatMap(m => m.lessons).length;
-              const isCompleted = newProgress.length === totalLessons;
+              const totalLessons = (course?.modules ?? []).flatMap(m => m.lessons).length;
+              // Count distinct completed lessons: the old `.length` comparison
+              // double-counted a re-appended lesson and could close a course
+              // one lesson early.
+              const isCompleted = totalLessons > 0 && countCompletedLessons(newProgress) >= totalLessons;
 
               // Update Daily Quests
               const updatedQuests = state.dailyQuests.map(q => {
