@@ -202,11 +202,19 @@ Three things were checked instead:
    200  src/store/useAcademyStore.js                         bytes=160795
    ```
 
-3. **CI ran the real production build.** `ubuntu-latest`, the identical
-   `npm run lint && npm test && npm run build` — see the check on the pull request
-   below. That job is the authoritative build; a local one that succeeds only
-   because the machine happened to be quiet is not the build that ships. Same
-   call as Wave 3.
+3. **CI ran the real production build.** `ubuntu-latest` (7 GB), the identical
+   `npm run lint && npm test && npm run build`, on this branch:
+
+   ```
+   $ gh pr checks 45
+   GitGuardian Security Checks   pass   1s
+   lint + test + build           pass   1m20s
+     https://github.com/JimEllars/AXiM-Academy-App-1-188/actions/runs/41839210861/job/126606009591
+   ```
+
+   That job is the authoritative build. A local build that succeeds only because
+   the machine happened to be quiet is not the build that ships — same call as
+   Wave 3.
 
 ### Not verified
 
