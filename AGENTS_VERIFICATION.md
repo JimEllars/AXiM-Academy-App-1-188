@@ -3,6 +3,93 @@
 Append-only. Newest wave first. Each entry names the files touched, the change,
 and the command output that proves it.
 
+## 2026-11-05 — Wave 5: database-backed checkout & search hardening
+
+Branch: `feat/academy-wave-5-db-path-hardening`
+Base: `91a808a` (`origin/main`, after the `@supabase/supabase-js` 2.110.2 → 2.118.0
+bump in PR #47, merged this cycle).
+
+### Starting state
+
+`git fetch origin main` + `git fetch --all --prune`: three commits in the
+previous 24 hours — `9e1b4a1` (Wave 4, PR #45), `79b87e2` (#36 `actions/setup-node`),
+`a0531bc` (#35 `actions/checkout`). No human-authored commits to rebase over;
+nothing local was abandoned or overwritten. 23 open PRs at start, all Dependabot.
+
+Baseline before any change, on `main` at `9e1b4a1`:
+
+```
+> axim-academy@1.0.0 lint
+> eslint .
+(exit 0 — 0 errors, 0 warnings)
+
+> axim-academy@1.0.0 test
+> node --test tests/*.test.js
+# tests 102
+# pass 102
+# fail 0
+```
+
+CI on `main` was green before the wave started (run `41840135552`, `lint + test +
+build`, `success`, 1m10s).
+
+### Dependabot reconciliation
+
+Merged the green, same-major bump first, one at a time per the P3.1 order in
+`Continued Development Plan.md`:
+
+| PR | Change | `gh pr checks` before merge |
+|---|---|---|
+| #47 | `@supabase/supabase-js` 2.110.2 → 2.118.0 | GitGuardian `pass` 1s; `lint + test + build` `pass` 1m14s |
+
+Queue: 23 → 22. The failing runtime majors (`tailwindcss` 4 #46,
+`@vitejs/plugin-react` 6 #48, `eslint` 10 #42, `react-dom` 19 #40) stay open on
+purpose — each is a migration, not a merge.
+
+### Defects found and fixed
+
+Both defects only surface once Supabase is configured and the catalog is served
+from `academy_courses` instead of `MOCK_COURSES` — the placeholder `.env` keeps
+them hidden in the demo, which is why they have not fired before.
+
+| # | Defect | File(s) | Fix |
+|---|---|---|---|
+| 1 | **Checkout rendered a `TypeError` on a live catalog.** PostgREST returns `academy_courses.price_usd` (NUMERIC) as a JSON string, so `course.price_usd.toFixed(0)` in the fiat selector threw `price_usd.toFixed is not a function` the moment a DB-served course reached checkout. | `src/components/transaction/CheckoutModal.jsx` | Coerce before formatting: `Number(course.price_usd ?? 0).toFixed(0)` at all three display sites. |
+| 2 | **A null description blanked the storefront.** `academy_courses.description` is nullable, and the search filter dereferenced `course.description.toLowerCase()` unguarded. A DB row with a NULL description threw when the learner typed in the search box. | `src/components/discovery/CourseGrid.jsx` | `(course.description ?? '').toLowerCase()`; `title` is NOT NULL but guarded the same way for symmetry. |
+
+### Verification
+
+```
+> axim-academy@1.0.0 lint
+> eslint .
+(exit 0 — 0 errors, 0 warnings)
+
+> axim-academy@1.0.0 test
+> node --test tests/*.test.js
+# tests 102
+# pass 102
+# fail 0
+```
+
+`npm run build` was attempted in this sandbox and, as in Waves 2–4, did not reach
+chunk render — the 2-core / 4 GB / no-swap container is documented in
+`DEBUGGING_NOTES.md` as OOM-killed at `rendering chunks`. The authoritative build
+is the CI job on `ubuntu-latest` (7 GB), which runs the identical
+`npm run lint && npm test && npm run build`; see the PR checks below.
+
+### Not verified
+
+- The two fixes are display/search guards, not unit-tested: the repo's test
+  harness is `node --test` over pure modules, and these are React components.
+  They are covered by lint + the CI production build instead.
+- No migration was executed this wave (the 2026-11-04 category CHECK remains
+  unapplied; `.env` still holds placeholders).
+- The remaining DB-shape gaps (`thumbnail_url` vs `thumbnail`, `long_description`
+  absent from the schema, no `price_crypto` column) are still open in the plan;
+  this wave only removed the two crash sites, it did not complete the mapping.
+
+---
+
 ## 2026-11-04 — Wave 4: `quiz_score` measured, enrollment ledger read back
 
 Branch: `feat/academy-wave-4-quiz-score-and-ledger-sync`

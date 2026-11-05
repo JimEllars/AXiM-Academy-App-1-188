@@ -505,11 +505,11 @@ export default function CheckoutModal({ course, onClose }) {
                   <p className="text-xl font-bold text-white">
                     {discount > 0 ? (
                       <>
-                        <span className="line-through text-gray-500 text-sm mr-2">${course.price_usd.toFixed(0)}</span>
-                        <span>${(course.price_usd * (1 - discount/100)).toFixed(0)}</span>
+                        <span className="line-through text-gray-500 text-sm mr-2">${Number(course.price_usd ?? 0).toFixed(0)}</span>
+                        <span>${(Number(course.price_usd ?? 0) * (1 - discount/100)).toFixed(0)}</span>
                       </>
                     ) : (
-                      <span>${course.price_usd.toFixed(0)}</span>
+                      <span>${Number(course.price_usd ?? 0).toFixed(0)}</span>
                     )} USD
                   </p>
                 </button>

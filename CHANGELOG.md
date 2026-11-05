@@ -3,6 +3,29 @@
 All notable changes to AXiM Academy. Newest first.
 Format: `## [wave] - YYYY-MM-DD`.
 
+## [Wave 5] - 2026-11-05
+
+Harden the checkout and storefront search against the real, database-backed
+course shape — the paths that only run once Supabase is configured and the
+catalog stops coming from the local seed.
+
+### Fixed
+
+- **Checkout crashed on a live catalog.** PostgREST hands `academy_courses.price_usd`
+  (NUMERIC) back as a string, so the fiat selector's `course.price_usd.toFixed(0)`
+  threw `price_usd.toFixed is not a function` the moment a DB-served course reached
+  the payment step. The three display sites now coerce with
+  `Number(course.price_usd ?? 0).toFixed(0)`.
+- **A NULL course description blanked the storefront.** `academy_courses.description`
+  is nullable and the search filter dereferenced `.toLowerCase()` unguarded, so a
+  DB row without a description threw as soon as a learner typed in the search box.
+  `CourseGrid` now falls back to an empty string.
+
+### Changed
+
+- Merged Dependabot `@supabase/supabase-js` 2.110.2 → 2.118.0 (PR #47) after its
+  CI passed green. Queue 23 → 22; the failing runtime majors stay open on purpose.
+
 ## [Wave 4] - 2026-11-04
 
 `quiz_score` becomes a measurement, and the enrollment ledger is read back from

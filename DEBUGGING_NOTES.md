@@ -296,3 +296,40 @@ check `ps aux` for a build from another directory before deciding the machine is
 slow. Two builds plus the agent runtime on 3.9 GB with no swap is an OOM the
 kernel resolves by killing whichever process touches the ceiling first — usually
 not the one that asked for it.
+
+## Checkout threw `price_usd.toFixed is not a function` on a live catalog (2026-11-05)
+
+**Symptom.** With Supabase configured and the catalog served from
+`academy_courses`, the fiat payment selector crashed instead of rendering the
+discounted price.
+
+**What it was.** PostgREST serializes `NUMERIC` columns as JSON strings (to
+preserve precision), so `academy_courses.price_usd` arrives as `"299.00"`, not
+`299`. `course.price_usd.toFixed(0)` is then a TypeError — `.toFixed` exists on
+`Number`, not `String`. The mock seed stores a real number, which is why the demo
+never hit it.
+
+**Fix.** `Number(course.price_usd ?? 0).toFixed(0)` at every display site in
+`CheckoutModal.jsx`.
+
+**How to spot it again.** A `price_usd` / `*_amount` value that starts as a JS
+number in the seed but arrives as a string from the database is a PostgREST
+`NUMERIC` coercion, not a typo. Coerce at the render boundary (`Number(x ?? 0)`),
+or normalise the row when it is mapped in `fetchCourses`.
+
+## Search blanked the storefront on a NULL description (2026-11-05)
+
+**Symptom.** Typing in the storefront search box made the whole catalog
+disappear, but only for courses that came from the database.
+
+**What it was.** `academy_courses.description` is nullable. The search filter
+dereferenced `course.description.toLowerCase()` unguarded, so a row with a NULL
+description threw inside `Array.filter` and React bailed out of the render. The
+mock seed always carries a description, so the demo never hit it.
+
+**Fix.** `(course.description ?? '').toLowerCase()` in `CourseGrid.jsx`; `title`
+is NOT NULL but is guarded the same way for symmetry.
+
+**How to spot it again.** A crash that only fires for database-served rows and
+never for the mock seed is a schema-shape difference — check the migration's
+nullability for every field the component dereferences.
