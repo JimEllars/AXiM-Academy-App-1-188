@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@questlabs/react-sdk": "^2.2.92",
-    "@supabase/supabase-js": "^2.39.0",
+    "@supabase/supabase-js": "^2.118.0",
     "@thirdweb-dev/react": "^4.9.4",
     "@thirdweb-dev/sdk": "^4.0.99",
     "buffer": "^6.0.3",
