@@ -23,8 +23,11 @@ export default function CourseGrid() {
 
   const filteredCourses = courses.filter(course => {
     if (course.is_approved !== true) return false;
-    const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         course.description.toLowerCase().includes(searchQuery.toLowerCase());
+    // `academy_courses.description` is nullable and PostgREST hands NUMERIC
+    // columns back as strings, so guard both before touching `.toLowerCase`.
+    // A null description must not blank the storefront behind the search box.
+    const matchesSearch = (course.title ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         (course.description ?? '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch && courseMatchesTrack(course, activeCategory);
   });
 

@@ -1,6 +1,6 @@
 # Continued Development Plan — AXiM Academy
 
-Last reconciled: 2026-11-04 (end of Wave 4).
+Last reconciled: 2026-11-05 (end of Wave 5).
 
 ## Where the platform actually is
 
@@ -89,21 +89,27 @@ Four things must be true before a learner can actually pay and earn a credential
 
 ## P3 — Catalogue & admin
 
-1. **Dependabot backlog**: 20 open PRs (was 22). `vite` 5 → 8 (PR #29) cannot
-   install at all — `@vitejs/plugin-react@4.7.0` peers `vite@^4 || ^5 || ^6 ||
-   ^7` — so `npm ci` fails before lint and the PR can never go green on its own.
-   `.github/dependabot.yml` holds `vite` majors back; the migration itself is a
-   scheduled task (plugin + `vite.config.js` + a full build), not a merge.
-   **Merged 2026-11-04:** the two workflow-only bumps — `actions/checkout`
-   4 → 7 (PR #35) and `actions/setup-node` 4 → 7 (PR #36), both green before
-   merging, one at a time, which is the order this section prescribes.
+1. **Dependabot backlog**: 22 open PRs (was 20 at end of Wave 4; three arrived
+   2026-11-05 — `tailwindcss` 4.3.3 #46, `@supabase/supabase-js` 2.118.0 #47,
+   `@vitejs/plugin-react` 6.2.1 #48 — and #47 was merged green, hence 22).
+   `vite` 5 → 8 (PR #29) cannot install at all — `@vitejs/plugin-react@4.7.0`
+   peers `vite@^4 || ^5 || ^6 || ^7` — so `npm ci` fails before lint and the PR
+   can never go green on its own. `.github/dependabot.yml` holds `vite` majors
+   back; the migration itself is a scheduled task (plugin + `vite.config.js` +
+   a full build), not a merge.
+   **Merged so far, in order:** `actions/checkout` 4 → 7 (#35) and
+   `actions/setup-node` 4 → 7 (#36) on 2026-11-04; `@supabase/supabase-js`
+   2.110.2 → 2.118.0 (#47) on 2026-11-05. Each was green before merging, one at
+   a time, which is the order this section prescribes.
    Still open and each needing its own build, never a batch:
    `react-router-dom` 7 (PR #16), `react`/`react-dom` 19 (PR #40 is
    `react-dom` alone — it cannot be merged without `react` 19 in the same
    change), `zustand` 5 (#39), `framer-motion` 14 (#38), `tailwind-merge` 3
    (#37), `eslint` 10 (#42), `eslint-plugin-react-hooks` 7 (#43),
-   `autoprefixer` 10.6.2 (#41). The rest are patch bumps inside transitive
-   trees and can go in ones and twos.
+   `tailwindcss` 4 (#46), `@vitejs/plugin-react` 6 (#48), `autoprefixer`
+   10.6.2 (#41). Of these, #42, #40, #46 and #48 are already failing CI (the
+   majors cannot pass their own build without a coordinated migration). The
+   rest are patch bumps inside transitive trees and can go in ones and twos.
 2. ~~**`academy_courses` has no `category` check**~~ **Addressed in Wave 4** by
    `20261104000000_academy_course_category_check.sql` (normalise → CHECK →
    index), **but not executed**. It is a written migration, not a verified one.
