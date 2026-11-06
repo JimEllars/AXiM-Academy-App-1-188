@@ -23,9 +23,6 @@ export default function CourseGrid() {
 
   const filteredCourses = courses.filter(course => {
     if (course.is_approved !== true) return false;
-    // `academy_courses.description` is nullable and PostgREST hands NUMERIC
-    // columns back as strings, so guard both before touching `.toLowerCase`.
-    // A null description must not blank the storefront behind the search box.
     const matchesSearch = (course.title ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                          (course.description ?? '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesSearch && courseMatchesTrack(course, activeCategory);
@@ -88,15 +85,22 @@ export default function CourseGrid() {
             >
               <div className="h-56 overflow-hidden relative">
                 <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/20 to-transparent z-10" />
-                <img 
-                  src={course.thumbnail} 
-                  alt={course.title} 
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 grayscale-[0.5] group-hover:grayscale-0" 
-                />
+                {course.thumbnail ? (
+                  <img
+                    src={course.thumbnail}
+                    alt={course.title}
+                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 grayscale-[0.5] group-hover:grayscale-0"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-emerald-950 to-gray-900" aria-hidden="true" />
+                )}
                 <div className="absolute top-6 left-6 z-20 flex space-x-2">
-                  <span className="bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg shadow-lg">
-                    {course.difficulty}
-                  </span>
+                  {/* Both are optional columns; an empty pill reads as a bug. */}
+                  {course.difficulty && (
+                    <span className="bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg shadow-lg">
+                      {course.difficulty}
+                    </span>
+                  )}
                   {course.badge && (
                     <span className="bg-gray-950/80 backdrop-blur-md text-emerald-400 border border-emerald-500/20 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-lg">
                       SBT Reward
@@ -108,10 +112,12 @@ export default function CourseGrid() {
               <div className="p-8 flex-1 flex flex-col">
                 <div className="flex items-center justify-between mb-4">
                   <span className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.2em]">{course.category}</span>
-                  <div className="flex items-center space-x-2 text-gray-500 text-[10px] font-bold uppercase">
-                    <SafeIcon name="Clock" className="h-3 w-3" />
-                    <span>{course.duration}</span>
-                  </div>
+                  {course.duration && (
+                    <div className="flex items-center space-x-2 text-gray-500 text-[10px] font-bold uppercase">
+                      <SafeIcon name="Clock" className="h-3 w-3" />
+                      <span>{course.duration}</span>
+                    </div>
+                  )}
                 </div>
                 
                 <h3 className="text-2xl font-black text-white mb-4 line-clamp-2 group-hover:text-emerald-400 transition-colors leading-tight">
@@ -124,7 +130,7 @@ export default function CourseGrid() {
 
                 <div className="flex items-center justify-between pt-6 border-t border-gray-800">
                   <div className="flex items-baseline space-x-1">
-                    <span className="text-2xl font-black text-white">${course.price_usd}</span>
+                    <span className="text-2xl font-black text-white">${Number(course.price_usd ?? 0).toFixed(0)}</span>
                     <span className="text-[10px] font-black text-gray-600 uppercase">USD</span>
                   </div>
                   <div className="h-10 w-10 bg-gray-800 rounded-xl flex items-center justify-center text-gray-400 group-hover:bg-emerald-500 group-hover:text-white transition-all transform group-hover:rotate-12">

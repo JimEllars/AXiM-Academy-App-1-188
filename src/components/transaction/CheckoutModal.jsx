@@ -213,6 +213,12 @@ export default function CheckoutModal({ course, onClose }) {
 
   const isAlreadyEnrolled = enrollments.some(e => e.course_id === course.id);
 
+  // `academy_courses` has no `price_crypto` column, so a database-served course
+  // usually has no ETH quote at all. Say so instead of rendering " ETH" with no
+  // number in front of it; `buildCryptoPaymentPlan` refuses the same case with
+  // an INVALID_PRICE reason if the learner tries anyway.
+  const ethPrice = course.price_crypto ?? null;
+
   /**
    * Crypto path.
    *
@@ -402,7 +408,11 @@ export default function CheckoutModal({ course, onClose }) {
             <div className="p-8 space-y-8">
               {/* Course Brief */}
               <div className="flex items-center space-x-4 p-4 bg-gray-950 rounded-2xl border border-gray-800">
-                <img src={course.thumbnail} className="h-16 w-16 rounded-xl object-cover border border-gray-800" alt="" />
+                {course.thumbnail ? (
+                  <img src={course.thumbnail} className="h-16 w-16 rounded-xl object-cover border border-gray-800" alt="" />
+                ) : (
+                  <div className="h-16 w-16 rounded-xl border border-gray-800 bg-gradient-to-br from-emerald-950 to-gray-900" aria-hidden="true" />
+                )}
                 <div className="flex-1">
                   <h4 className="text-white font-bold leading-tight">{course.title}</h4>
                   <p className="text-xs text-gray-500 mt-1 line-clamp-1">AXiM Professional Certification</p>
@@ -479,18 +489,22 @@ export default function CheckoutModal({ course, onClose }) {
                 >
                   <SafeIcon name="Zap" className={`h-6 w-6 mb-4 ${method === 'crypto' ? 'text-emerald-400' : 'text-gray-500'}`} />
                   <p className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">Pay with Crypto</p>
-                  <p className="text-xl font-bold text-white">
-                    {discount > 0 ? (
-                      <>
-                        <span className="line-through text-gray-500 text-sm mr-2">{course.price_crypto}</span>
-                        {/* Same helper the transfer uses, so the quoted price and
-                            the signed amount cannot drift apart. */}
-                        <span>{effectiveEthAmount(course.price_crypto, discount)}</span>
-                      </>
-                    ) : (
-                      <span>{course.price_crypto}</span>
-                    )} ETH
-                  </p>
+                  {ethPrice === null ? (
+                    <p className="text-sm font-bold text-gray-500">Not offered for this course</p>
+                  ) : (
+                    <p className="text-xl font-bold text-white">
+                      {discount > 0 ? (
+                        <>
+                          <span className="line-through text-gray-500 text-sm mr-2">{ethPrice}</span>
+                          {/* Same helper the transfer uses, so the quoted price and
+                              the signed amount cannot drift apart. */}
+                          <span>{effectiveEthAmount(ethPrice, discount)}</span>
+                        </>
+                      ) : (
+                        <span>{ethPrice}</span>
+                      )} ETH
+                    </p>
+                  )}
                 </button>
                 <button 
                   onClick={() => {

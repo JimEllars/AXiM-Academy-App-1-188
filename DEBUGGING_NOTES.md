@@ -333,3 +333,58 @@ is NOT NULL but is guarded the same way for symmetry.
 **How to spot it again.** A crash that only fires for database-served rows and
 never for the mock seed is a schema-shape difference — check the migration's
 nullability for every field the component dereferences.
+
+## Every lesson in a live catalog rendered as an empty quiz (2026-11-06)
+
+**Symptom.** With Supabase configured, clicking into any lesson showed the
+`QuizEngine` panel with no questions and no way to complete it — including
+lessons the instructor had written as text.
+
+**What it was.** The classroom chooses its renderer by lesson `type`
+(`video` → `VideoPlayer`, `live` → `LiveStreamRoom`, `article` → prose,
+anything else → `QuizEngine`). `academy_lessons` does not have a `type` column;
+it has `content_type` with a CHECK constraint of
+`video | article | interactive_quiz`. Nothing renamed it, so `type` was
+`undefined` on every database row and `undefined` fell through to the quiz
+renderer. The mock seed used `type` directly, so the demo was correct and the
+live catalog was not.
+
+The same mapping gap hid the lesson *body*: article HTML, video URLs and quiz
+questions all live in `content_payload` (JSONB), and the classroom reads
+`content`, `videoUrl`, `quizData`. All three were `undefined` too.
+
+**Fix.** `src/lib/courseRow.js` maps `content_type` → `type`, pulls the body out
+of `content_payload`, and defaults an unrecognised type to `article`. The
+default matters: a mis-typed lesson should show its title and an empty body, not
+a quiz the learner can never pass.
+
+**How to spot it again.** A renderer selected by a field that is never populated
+fails *silently* into its last branch. When a component switches on
+`row.someField`, check that the column exists in the migration, not just in the
+seed — and make the fallback branch the harmless one, not the interactive one.
+
+## `npm ci` installs nothing and says it succeeded (2026-11-06)
+
+**Symptom.** After a fresh `npm ci` in this sandbox, `npm run lint` could not
+find `eslint`, `npm run build` could not find `vite`, and PostCSS failed to load
+`autoprefixer`. `npm ci` had printed `added 1226 packages in 26m` and exited 0.
+
+**What it was.** The shell exports `NODE_ENV=production`. npm omits
+`devDependencies` when `NODE_ENV=production` regardless of the lockfile, and this
+repo keeps `vite`, `eslint`, `tailwindcss` and `autoprefixer` in
+`devDependencies`. Nothing warns: the install is "successful", it just installed
+the wrong half of the tree. CI does not set `NODE_ENV`, which is why the same
+commands work on `ubuntu-latest`.
+
+**Fix.** `npm install --include=dev` (or `NODE_ENV=development npm ci`) in this
+sandbox. Check with `npm ls autoprefixer` — `(empty)` means the dev tree is
+missing.
+
+**Related, and worth not repeating.** Interrupting `npm install` midway leaves
+`node_modules` in a half-renamed state; the next run dies with
+`ENOTEMPTY: directory not empty, rename '.../autoprefixer'`. While that state
+held, `vite build` failed with
+`Rollup failed to resolve import "@supabase/phoenix"` — a *missing node_modules
+directory*, not a broken import in the code (the package is in the lockfile at
+0.4.5 and CI resolves it). Delete `node_modules` and reinstall once, cleanly,
+before concluding a build error is real.

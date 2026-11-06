@@ -3,6 +3,139 @@
 Append-only. Newest wave first. Each entry names the files touched, the change,
 and the command output that proves it.
 
+## 2026-11-06 — Wave 6: the whole database course shape, mapped in one place
+
+Branch: `feat/academy-wave-6-course-row-normalization`
+Base: `c7c16f0` (`origin/main`: Wave 5 plus the `autoprefixer` 10.6.2 bump in
+PR #41, merged this cycle).
+
+### Starting state
+
+`git fetch origin main` + `git fetch --all --prune`. One commit in the previous
+24 hours, both authored by the operator account:
+`91a808a` (`@supabase/supabase-js` 2.110.2 → 2.118.0, PR #47) and `490157f`
+(Wave 5, PR #49). No local work was in flight, nothing to rebase over and
+nothing overwritten. 22 open PRs at start, all Dependabot.
+
+CI on `main` at `c7c16f0` was green (`lint + test + build`, `success`,
+2026-11-06T13:06:06Z) — that is the authoritative baseline build for this wave,
+for the reason recorded under "Verification" below.
+
+Baseline before any change, on `main` at `490157f`:
+
+```
+> axim-academy@1.0.0 lint
+> eslint .
+(exit 0 — 0 errors, 0 warnings)
+
+> axim-academy@1.0.0 test
+> node --test tests/*.test.js
+# tests 102
+# pass 102
+# fail 0
+```
+
+### Dependabot reconciliation
+
+| PR | Change | `gh pr checks` before merge |
+|---|---|---|
+| #41 | `autoprefixer` 10.5.2 → 10.6.2 | `lint + test + build` `pass` 1m21s; GitGuardian `pass` 1s |
+
+Queue: 22 → 21. `eslint-plugin-react-hooks` 7 (#43) is also green and is the
+next one in this order. `eslint` 10 (#42), `react-dom` 19 (#40), `tailwindcss` 4
+(#46) and `@vitejs/plugin-react` 6 (#48) are failing their own CI on purpose —
+each needs a coordinated migration, not a merge.
+
+### Defects found and fixed
+
+All of these only fire once Supabase is configured and the catalog comes from
+`academy_courses` instead of `MOCK_COURSES`. Wave 5 fixed two of them one at a
+time; this wave maps the row once, in `src/lib/courseRow.js`, and tests it.
+
+| # | Defect | File(s) | Fix |
+|---|---|---|---|
+| 1 | **Every lesson rendered as an empty quiz.** `academy_lessons` has `content_type` (`video` \| `article` \| `interactive_quiz`), `InteractiveClassroom` switches on `type`, and nothing renamed it — so `undefined` fell through to the `QuizEngine` branch on every lesson, including articles. | `src/lib/courseRow.js` | `normalizeLessonRow` derives `type`, and defaults an unrecognised type to `article`. |
+| 2 | **Lesson bodies, video URLs and quiz questions were never read.** They live in `content_payload` (JSONB); the UI reads `content`, `videoUrl`, `quizData`. | `src/lib/courseRow.js` | All three are pulled out of `content_payload`, with empty defaults. |
+| 3 | **Every DB-served course had a broken thumbnail.** Column is `thumbnail_url`; UI reads `thumbnail`. | `src/lib/courseRow.js`, `CourseGrid`, `CourseDetails`, `CheckoutModal`, `StudentDashboard` | Mapped once; the five render sites fall back to a gradient block when there is no image. |
+| 4 | **"About this Curriculum" was blank.** No `long_description` column. | `src/lib/courseRow.js` | Falls back to `description`. |
+| 5 | **Checkout quoted a nonexistent ETH price** — "≈ ETH" with no number, and "ETH" in the crypto card. | `src/lib/courseRow.js`, `CourseDetails`, `CheckoutModal` | `price_crypto` is `null` when absent (never derived from a hard-coded FX rate); both sites render "Not offered for this course". `buildCryptoPaymentPlan` already refuses that case with `INVALID_PRICE`. |
+| 6 | **Empty `difficulty` / `duration` chrome.** Neither is a column, so the card showed an empty emerald pill and a dangling "•", and global search showed "Hardware •". | `CourseGrid`, `CourseDetails`, `GlobalSearch` | Each element renders only when it has a value. |
+| 7 | **`price_usd` was a string** (PostgREST NUMERIC). Wave 5 coerced it at three display sites; the coercion is now at the row boundary. | `src/lib/courseRow.js` | `toPriceNumber`, tested against `'299.00'`, `null`, `-5`, `'free'`, `Infinity`. |
+| 8 | **`course?.modules.flatMap` threw on a course with no modules.** | `StudentDashboard` | `flattenLessons(course)`, which tolerates a missing/empty array. |
+
+`fetchCourses` now maps with `normalizeCourseRows`, and the `MOCK_COURSES` seed
+goes through the same function — the demo and the live catalog cannot drift into
+two shapes, which is what let defects 1–6 hide in the first place.
+
+### Verification
+
+```
+> axim-academy@1.0.0 lint
+> eslint .
+(exit 0 — 0 errors, 0 warnings)
+
+> axim-academy@1.0.0 test
+> node --test tests/*.test.js
+1..117
+# tests 117
+# pass 117
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 38959.14232
+```
+
+(102 existing + 15 new in `tests/courseRow.test.js`. The new file proves the six
+mapping defects directly: `thumbnail_url` → `thumbnail`, `long_description`
+fallback, `content_type` → `type` with `article` as the safe default,
+`content_payload` → `videoUrl`/`content`/`quizData`, `null` `price_crypto`, and
+that normalizing the seed is a no-op so the two catalogs stay on one path.)
+
+**`npm run build` could not be completed in this sandbox, and the failure is
+environmental.** Two attempts, both killed by the kernel at the same phase:
+
+```
+vite v5.4.21 building for production...
+transforming...
+✓ 5302 modules transformed.
+rendering chunks...
+Killed
+```
+
+```
+[38600.579919] Out of memory: Killed process 28199 (node)
+              total-vm:25540736kB, anon-rss:2342864kB, UID:1000
+```
+
+The second attempt was rerun with `--max-old-space-size=2048` to make V8 collect
+before the box died; it was OOM-killed identically at 2.34 GB anonymous RSS. This
+container is 3.9 GB with no swap and is shared with other repositories' builds
+(`/proc/pressure/cpu` sat at ~94% for the whole window). What the log *does*
+prove: all 5302 modules transformed with **no** resolution errors — the
+`@supabase/phoenix` failure seen in an earlier attempt was a half-installed
+`node_modules` (see `DEBUGGING_NOTES.md`), not a code defect — and the chunk
+render only dies on memory, never on a module.
+
+The authoritative production build is the CI job on `ubuntu-latest`, which runs
+the identical `npm run lint && npm test && npm run build` and is green on the
+base commit; the PR checks below are the gate for this branch.
+
+### Not verified
+
+- The seven fixes are render-boundary and mapping fixes, not unit-tested at the
+  React level: this repo's harness is `node --test` over pure modules. The
+  mapping *is* covered (15 tests); the JSX guards are covered by lint and the CI
+  build.
+- No migration was executed. `20261104000000_academy_course_category_check.sql`
+  and `20261102000000_academy_affiliate_credentials_rls.sql` remain written but
+  unapplied (`.env` still holds placeholders).
+- `academy_courses` still has no `difficulty`, `duration`, `long_description` or
+  `price_crypto`. The UI now degrades gracefully instead of inventing values;
+  adding the columns is recorded as P3.4 in `Continued Development Plan.md`.
+
+---
+
 ## 2026-11-05 — Wave 5: database-backed checkout & search hardening
 
 Branch: `feat/academy-wave-5-db-path-hardening`

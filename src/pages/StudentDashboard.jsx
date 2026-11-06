@@ -11,6 +11,7 @@ import LevelProgress from '../components/gamification/LevelProgress';
 import QuestTracker from '../components/gamification/QuestTracker';
 import ExperienceToast from '../components/gamification/ExperienceToast';
 import SafeIcon from '../common/SafeIcon';
+import { flattenLessons } from '../lib/courseRow';
 
 export default function StudentDashboard() {
   const { user, walletAddress, enrollments, courses, unlockedBadges, level, xp, streak, dailyQuests, fetchEnrollments } = useAcademyStore();
@@ -85,7 +86,9 @@ export default function StudentDashboard() {
             <div className="grid gap-6">
               {activeEnrollments.length > 0 ? activeEnrollments.map(enr => {
                 const course = courses.find(c => c.id === enr.course_id);
-                const totalLessons = course?.modules.flatMap(m => m.lessons).length || 1;
+                // `flattenLessons` tolerates a course with no modules, which is
+                // the normal state for a DB row before an instructor adds one.
+                const totalLessons = flattenLessons(course).length || 1;
                 const progressPercent = (enr.progress.length / totalLessons) * 100;
                 return (
                   <motion.div 
@@ -94,7 +97,11 @@ export default function StudentDashboard() {
                     className="bg-gray-900 border border-gray-800 rounded-[2.5rem] p-8 flex flex-col md:flex-row items-center gap-8 group hover:border-emerald-500/30 transition-all shadow-xl"
                   >
                     <div className="relative h-24 w-24 shrink-0">
-                      <img src={course?.thumbnail} className="h-full w-full rounded-2xl object-cover border border-gray-800" alt="" />
+                      {course?.thumbnail ? (
+                        <img src={course.thumbnail} className="h-full w-full rounded-2xl object-cover border border-gray-800" alt="" />
+                      ) : (
+                        <div className="h-full w-full rounded-2xl border border-gray-800 bg-gradient-to-br from-emerald-950 to-gray-900" aria-hidden="true" />
+                      )}
                       <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-white h-8 w-8 rounded-xl flex items-center justify-center border-4 border-gray-900 shadow-lg">
                         <SafeIcon name="Play" className="h-3 w-3" />
                       </div>
