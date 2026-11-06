@@ -86,7 +86,11 @@ export default function GlobalSearch() {
                     <img src={course.thumbnail} className="h-12 w-12 rounded-xl object-cover shrink-0 grayscale group-hover:grayscale-0 transition-all" alt="" />
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors">{course.title}</h4>
-                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">{course.category} • {course.difficulty}</p>
+                      {/* `difficulty` is not a column in `academy_courses`; a
+                          dangling separator is worse than no metadata line. */}
+                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">
+                        {[course.category, course.difficulty].filter(Boolean).join(' • ')}
+                      </p>
                     </div>
                     <SafeIcon name="ArrowRight" className="h-4 w-4 text-gray-700 group-hover:text-emerald-500" />
                   </button>

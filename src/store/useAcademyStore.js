@@ -11,6 +11,7 @@ import {
   EnrollmentPayloadError
 } from '../lib/enrollmentPayload';
 import { countCompletedLessons, mapEnrollmentRows, mergeEnrollments } from '../lib/enrollmentState';
+import { normalizeCourseRows } from '../lib/courseRow';
 import { normalizeQuizScore } from '../lib/quizScore';
 import { buildRevenueRecord } from '../lib/revenue';
 
@@ -93,7 +94,9 @@ export const useAcademyStore = create(
       authUserId: null,
       role: 'student',
       walletAddress: null,
-      courses: MOCK_COURSES,
+      // The seed goes through the same normalizer as a fetched row, so the
+      // demo and the live catalog cannot drift into two different shapes.
+      courses: normalizeCourseRows(MOCK_COURSES),
       enrollments: [],
       unlockedBadges: [],
       aiChatHistory: [],
@@ -214,7 +217,7 @@ export const useAcademyStore = create(
           // Placeholder credentials: keep the seeded catalog rather than
           // rendering an empty storefront behind a failed request.
           console.warn('[AXiM Academy] Supabase is not configured; serving the local course seed.');
-          set({ courses: MOCK_COURSES, isLoading: false });
+          set({ courses: normalizeCourseRows(MOCK_COURSES), isLoading: false });
           return;
         }
         try {
@@ -234,24 +237,18 @@ export const useAcademyStore = create(
           if (error) throw error;
 
           if (data && data.length > 0) {
-            // Map the schema to what frontend expects, although mapping might be needed based on MOCK_COURSES
-            // Actually, just use data if it's there
-            // MOCK_COURSES has specific fields like is_approved: true
-            const formattedData = data.map(c => ({
-              ...c,
-              is_approved: true,
-              modules: c.academy_modules?.map(m => ({
-                ...m,
-                lessons: m.academy_lessons || []
-              })) || []
-            }));
-            set({ courses: formattedData, isLoading: false });
+            // The database and the seed disagree on field names: `thumbnail_url`
+            // vs `thumbnail`, no `long_description`, no `price_crypto`, and
+            // lessons carry `content_type` where the classroom switches on
+            // `type`. `normalizeCourseRows` owns that mapping (and its tests),
+            // so the store does not have to keep a second copy of it.
+            set({ courses: normalizeCourseRows(data), isLoading: false });
           } else {
-            set({ courses: MOCK_COURSES, isLoading: false });
+            set({ courses: normalizeCourseRows(MOCK_COURSES), isLoading: false });
           }
         } catch (err) {
           console.error("Failed to fetch courses:", err);
-          set({ courses: MOCK_COURSES, isLoading: false });
+          set({ courses: normalizeCourseRows(MOCK_COURSES), isLoading: false });
         }
       },
       addCourse: (courseData) => set(state => ({

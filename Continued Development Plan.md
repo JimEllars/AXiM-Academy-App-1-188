@@ -1,6 +1,6 @@
 # Continued Development Plan — AXiM Academy
 
-Last reconciled: 2026-11-05 (end of Wave 5).
+Last reconciled: 2026-11-06 (end of Wave 6).
 
 ## Where the platform actually is
 
@@ -89,9 +89,8 @@ Four things must be true before a learner can actually pay and earn a credential
 
 ## P3 — Catalogue & admin
 
-1. **Dependabot backlog**: 22 open PRs (was 20 at end of Wave 4; three arrived
-   2026-11-05 — `tailwindcss` 4.3.3 #46, `@supabase/supabase-js` 2.118.0 #47,
-   `@vitejs/plugin-react` 6.2.1 #48 — and #47 was merged green, hence 22).
+1. **Dependabot backlog**: 21 open PRs (22 at the end of Wave 5, minus
+   `autoprefixer` 10.6.2 #41, merged green on 2026-11-06).
    `vite` 5 → 8 (PR #29) cannot install at all — `@vitejs/plugin-react@4.7.0`
    peers `vite@^4 || ^5 || ^6 || ^7` — so `npm ci` fails before lint and the PR
    can never go green on its own. `.github/dependabot.yml` holds `vite` majors
@@ -99,15 +98,16 @@ Four things must be true before a learner can actually pay and earn a credential
    a full build), not a merge.
    **Merged so far, in order:** `actions/checkout` 4 → 7 (#35) and
    `actions/setup-node` 4 → 7 (#36) on 2026-11-04; `@supabase/supabase-js`
-   2.110.2 → 2.118.0 (#47) on 2026-11-05. Each was green before merging, one at
-   a time, which is the order this section prescribes.
+   2.110.2 → 2.118.0 (#47) on 2026-11-05; `autoprefixer` 10.5.2 → 10.6.2 (#41)
+   on 2026-11-06. Each was green before merging, one at a time, which is the
+   order this section prescribes.
    Still open and each needing its own build, never a batch:
    `react-router-dom` 7 (PR #16), `react`/`react-dom` 19 (PR #40 is
    `react-dom` alone — it cannot be merged without `react` 19 in the same
    change), `zustand` 5 (#39), `framer-motion` 14 (#38), `tailwind-merge` 3
    (#37), `eslint` 10 (#42), `eslint-plugin-react-hooks` 7 (#43),
-   `tailwindcss` 4 (#46), `@vitejs/plugin-react` 6 (#48), `autoprefixer`
-   10.6.2 (#41). Of these, #42, #40, #46 and #48 are already failing CI (the
+   `tailwindcss` 4 (#46), `@vitejs/plugin-react` 6 (#48). Of these, #42, #40,
+   #46 and #48 are already failing CI (the
    majors cannot pass their own build without a coordinated migration). The
    rest are patch bumps inside transitive trees and can go in ones and twos.
 2. ~~**`academy_courses` has no `category` check**~~ **Addressed in Wave 4** by
@@ -126,6 +126,26 @@ Four things must be true before a learner can actually pay and earn a credential
    the ETH that arrived. Do not report revenue from this before it reads the
    ledger.
 
+4. **`academy_courses` is missing four columns the catalogue UI models.**
+   Wave 6 stopped the UI from inventing them — `difficulty` and `duration`
+   render only when present, `long_description` falls back to `description`,
+   `thumbnail` comes from `thumbnail_url` — but a real catalogue needs the
+   fields, not a graceful absence. One migration should decide:
+   `difficulty TEXT`, `duration_minutes INTEGER` (better than the free-text
+   `'4.5 Hours'` the seed uses, and what a progress estimate actually needs),
+   `long_description TEXT`, and `price_crypto NUMERIC(18, 8)` **or** an
+   explicit ETH/USD quote written by the operator. Do not derive
+   `price_crypto` from `price_usd` in the client: there is no rate in the
+   database, and a price computed from a hard-coded one is a number the
+   treasury never quoted. Written, not executed — per the working agreement, a
+   migration that has not run is not verified.
+5. **Course-shape mapping is now centralised** (Wave 6,
+   `src/lib/courseRow.js`). Any new column the storefront reads belongs there,
+   with a test, not as a `??` in a component. `fetchCourses` and the
+   `MOCK_COURSES` seed both go through it on purpose: a mapping bug that only
+   appears for database rows is exactly what Waves 5 and 6 were each spent
+   finding.
+
 ## Working agreement reminders
 
 - Branch from `origin/main`, never from a stale local main.
@@ -133,5 +153,8 @@ Four things must be true before a learner can actually pay and earn a credential
   nothing.
 - Run `npm run lint && npm test && npm run build`, not a subset.
 - A migration that has not been executed is not verified.
+- In this sandbox `NODE_ENV=production` is exported, so `npm ci` silently omits
+  `devDependencies` — no `vite`, no `eslint`, no `tailwindcss`. Install with
+  `npm install --include=dev` and confirm with `npm ls autoprefixer`.
 - One verification file per change under this repo's `AGENTS_VERIFICATION.md`
   header block.

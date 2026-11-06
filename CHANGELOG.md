@@ -3,6 +3,55 @@
 All notable changes to AXiM Academy. Newest first.
 Format: `## [wave] - YYYY-MM-DD`.
 
+## [Wave 6] - 2026-11-06
+
+Finish mapping the database course shape onto what the UI renders. Wave 5
+removed two crash sites in `fetchCourses`' output; this wave owns the whole
+mapping, in one pure module with tests.
+
+### Added
+
+- **`src/lib/courseRow.js`** — `normalizeCourseRow`, `normalizeCourseRows`,
+  `normalizeModuleRow`, `normalizeLessonRow`, `flattenLessons`, `toPriceNumber`,
+  `normalizePriceCrypto`. Pure functions, 15 new unit tests, no database needed.
+
+### Fixed
+
+- **Every database-served course had a broken thumbnail.** The schema column is
+  `thumbnail_url`; the UI reads `thumbnail`, and `fetchCourses` spread the row
+  without renaming it. Storefront cards, the course hero, checkout and the
+  student dashboard now all get `thumbnail`.
+- **“About this Curriculum” was blank on a live catalog.** `academy_courses` has
+  no `long_description`; it now falls back to `description`.
+- **Every lesson rendered as a quiz.** `academy_lessons` stores `content_type`
+  (`video` | `article` | `interactive_quiz`) and `InteractiveClassroom` switches
+  on `type`. Nothing matched, so an article — and any lesson with an unknown
+  type — fell through to `QuizEngine` and showed an empty quiz. Lesson type is
+  now derived, with unknown types defaulting to `article`, never `quiz`.
+- **Lesson bodies, video URLs and quiz questions were never read.** They live in
+  `content_payload` (JSONB); `videoUrl`, `content` and `quizData` are now filled
+  from it.
+- **Checkout quoted an ETH price that does not exist.** `academy_courses` has no
+  `price_crypto` column, so the crypto option read “ETH” with no amount. It now
+  reads “Not offered for this course”, and `price_crypto` stays `null` rather
+  than being invented from a hard-coded FX rate. The existing pre-flight already
+  refuses that case with an `INVALID_PRICE` reason.
+- **Empty `difficulty` / `duration` chrome.** Neither is a column in
+  `academy_courses`, so the catalog showed an empty emerald pill and a dangling
+  “•”, and global search showed “Hardware •”. Each element now renders only when
+  it has a value.
+- **`price_usd` is a number everywhere.** The PostgREST `NUMERIC`-as-string
+  coercion Wave 5 patched at three display sites now happens once, at the row
+  boundary.
+
+### Changed
+
+- `fetchCourses` maps rows with `normalizeCourseRows`, and the `MOCK_COURSES`
+  seed goes through the same function — the demo and the live catalog can no
+  longer drift into two different shapes.
+- Merged Dependabot `autoprefixer` 10.5.2 → 10.6.2 (PR #41) after green CI.
+  Queue 22 → 21.
+
 ## [Wave 5] - 2026-11-05
 
 Harden the checkout and storefront search against the real, database-backed

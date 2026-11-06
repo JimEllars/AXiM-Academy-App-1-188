@@ -19,6 +19,12 @@ export default function CourseDetails() {
   // Course rows carry their track; an unrecognised value must not render an
   // empty chip or a dead filter link.
   const track = normalizeTrack(course?.category, null);
+  // `academy_courses` has no `duration`, and most rows have no thumbnail until
+  // an instructor uploads one: an absent value must collapse the element, not
+  // render a dangling "•" or a broken image.
+  const duration = course.duration ?? null;
+  const thumbnail = course.thumbnail ?? '';
+  const ethPrice = course.price_crypto ?? null;
 
   if (isLoading) return <div className="p-20 text-center text-white">Processing secure uplink...</div>;
   if (!course) return <div className="p-20 text-center text-white">Course not found</div>;
@@ -27,11 +33,15 @@ export default function CourseDetails() {
     <div className="min-h-screen bg-gray-950">
       {/* Hero Section */}
       <div className="relative h-[400px] overflow-hidden">
-        <img 
-          src={course.thumbnail} 
-          className="w-full h-full object-cover opacity-30" 
-          alt={course.title} 
-        />
+        {thumbnail ? (
+          <img
+            src={thumbnail}
+            className="w-full h-full object-cover opacity-30"
+            alt={course.title}
+          />
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-emerald-950 via-gray-950 to-gray-950" aria-hidden="true" />
+        )}
         <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-gray-950/50 to-transparent" />
         
         <div className="absolute bottom-0 left-0 w-full p-8 md:p-16">
@@ -53,7 +63,9 @@ export default function CourseDetails() {
                     {course.category || 'Unfiled'}
                   </span>
                 )}
-                <span className="text-gray-400 text-sm font-medium">• {course.duration}</span>
+                {duration && (
+                  <span className="text-gray-400 text-sm font-medium">• {duration}</span>
+                )}
               </div>
               <h1 className="text-4xl md:text-6xl font-black text-white mb-6 uppercase tracking-tight">
                 {course.title}
@@ -105,10 +117,14 @@ export default function CourseDetails() {
             <div className="mb-8">
               <p className="text-gray-500 text-sm font-bold uppercase tracking-widest mb-1">Tuition Fee</p>
               <div className="flex items-baseline space-x-2">
-                <span className="text-4xl font-black text-white">${course.price_usd}</span>
+                <span className="text-4xl font-black text-white">${Number(course.price_usd ?? 0).toFixed(0)}</span>
                 <span className="text-gray-500">USD</span>
               </div>
-              <p className="text-emerald-400 font-mono mt-1">≈ {course.price_crypto} ETH</p>
+              {/* No `price_crypto` in the schema: quote ETH only when the row
+                  actually carries one, instead of printing "≈  ETH". */}
+              {ethPrice !== null && (
+                <p className="text-emerald-400 font-mono mt-1">≈ {ethPrice} ETH</p>
+              )}
             </div>
 
             <div className="space-y-4 mb-8">
